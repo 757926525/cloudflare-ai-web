@@ -19,6 +19,7 @@ import AuthDialog from "@/components/auth-dialog";
 import ChatInput, { type onSendMessageProps } from "@/components/chat-input";
 import ChatList from "@/components/chat-list";
 import Footer from "@/components/footer";
+import RepoHeaderBar from "@/components/repo-header-bar";
 import { Button } from "@/components/ui/button";
 import { db, type Message } from "@/lib/db";
 import { models } from "@/lib/models";
@@ -48,7 +49,24 @@ const Page = () => {
       transport: new DefaultChatTransport({
         api: "/api/chat",
         prepareSendMessagesRequest: ({ messages }) => {
-          const { id, provider } = getStoredModel("CF_AI_MODEL");
+          const storedModel = getStoredModel("CF_AI_MODEL");
+
+          let customConfig: any ;
+          if (storedModel.provider === "custom") {
+            try {
+              const customApis = JSON.parse(localStorage.getItem("CF_AI_CUSTOM_APIS") || "[]");
+              const target = customApis.find((c: any) => c.id === storedModel.id);
+              if (target) {
+                customConfig = {
+                  baseUrl: target.baseUrl,
+                  apiKey: target.apiKey,
+                  modelId: target.modelId,
+                };
+              }
+            } catch {
+              // ignore
+            }
+          }
 
           return {
             headers: {
@@ -56,9 +74,10 @@ const Page = () => {
             },
             body: {
               messages: messages.slice(-10),
-              model: id,
-              provider,
+              model: storedModel.id,
+              provider: storedModel.provider,
               search: localStorage.getItem("CF_AI_SEARCH_ENABLED") === "true",
+              customConfig,
             },
           };
         },
@@ -178,11 +197,18 @@ const Page = () => {
     });
   };
 
+  const handleInsertCodeContext = (filename: string, content: string) => {
+    onSendMessage({
+      text: `Loaded repository file: ${filename}\n\`\`\`\n${content}\n\`\`\`\nPlease examine this file and help me with it.`,
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen">
+      <RepoHeaderBar onInsertCodeContext={handleInsertCodeContext} />
       <div
         ref={chatListRef}
-        className="overflow-y-auto scrollbar px-2"
+        className="overflow-y-auto scrollbar px-2 flex-1"
         style={{ scrollbarGutter: "stable both-edges" }}
       >
         <ChatList

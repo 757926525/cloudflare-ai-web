@@ -3,15 +3,21 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
+  Archive,
   ArrowUp,
   Earth,
+  FileCode,
   Loader2,
+  Mic,
+  MicOff,
   Paperclip,
   RefreshCw,
   Square,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -22,6 +28,8 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Model } from "@/lib/models";
 import { cn, type StoredModelKey } from "@/lib/utils";
 import { Toggle } from "@/components/ui/toggle";
+import { extractZipFiles } from "@/lib/zip-utils";
+import { useVoiceChat } from "@/hooks/use-voice-chat";
 
 export interface onSendMessageProps {
   text: string;
@@ -70,6 +78,13 @@ const ChatInput = ({
   const [selectedModel, setSelectedModel] = useState<Model>();
   const [files, setFiles] = useState<FileUIPart[]>([]);
   const [searchEnabled, setSearchEnabled] = useState(false);
+  const { isListening, startListening, stopListening, transcript } = useVoiceChat();
+
+  useEffect(() => {
+    if (transcript) {
+      form.setValue("input", transcript);
+    }
+  }, [transcript, form]);
 
   useEffect(() => {
     setSearchEnabled(localStorage.getItem("CF_AI_SEARCH_ENABLED") === "true");
@@ -104,26 +119,57 @@ const ChatInput = ({
   const onAddFiles = () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = "image/*,.zip";
     input.multiple = true;
     input.onchange = async () => {
-      const newFiles = await Promise.all(
-        Array.from(input.files ?? []).map(async (file) => ({
-          type: "file" as const,
-          filename: file.name,
-          mediaType: file.type,
-          url: await fileToBase64(file),
-        })),
-      );
+      const fileList = Array.from(input.files ?? []);
+      const imageFiles: File[] = [];
 
-      setFiles((prevState) => {
-        const combinedFiles = [...prevState, ...newFiles];
-        if (combinedFiles.length > 5) {
-          toast.warning("You can only attach up to 5 images.");
-          return combinedFiles.slice(0, 5);
+      for (const file of fileList) {
+        if (file.name.endsWith(".zip")) {
+          // Process zip file
+          toast.info(`Extracting zip: ${file.name}...`);
+          try {
+            const extracted = await extractZipFiles(file);
+            toast.success(`Extracted ${extracted.length} code files from ${file.name}`);
+            const codeSummary = extracted
+              .map((f) => `### File: ${f.filename}\n\`\`\`\n${f.content}\n\`\`\``)
+              .join("\n\n");
+
+            const currentVal = form.getValues("input");
+            form.setValue(
+              "input",
+              (currentVal ? currentVal + "\n\n" : "") +
+                `Here are the project files extracted from ${file.name}:\n\n` +
+                codeSummary
+            );
+          } catch (err: any) {
+            toast.error(`Failed to extract zip: ${err.message}`);
+          }
+        } else if (file.type.startsWith("image/")) {
+          imageFiles.push(file);
         }
-        return combinedFiles;
-      });
+      }
+
+      if (imageFiles.length > 0) {
+        const newFiles = await Promise.all(
+          imageFiles.map(async (file) => ({
+            type: "file" as const,
+            filename: file.name,
+            mediaType: file.type,
+            url: await fileToBase64(file),
+          })),
+        );
+
+        setFiles((prevState) => {
+          const combinedFiles = [...prevState, ...newFiles];
+          if (combinedFiles.length > 5) {
+            toast.warning("You can only attach up to 5 images.");
+            return combinedFiles.slice(0, 5);
+          }
+          return combinedFiles;
+        });
+      }
     };
     input.click();
   };
@@ -258,16 +304,37 @@ const ChatInput = ({
               </Toggle>
             )}
 
-            {selectedModel?.input?.includes("image") && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="relative"
-                onClick={onAddFiles}
-              >
-                <Paperclip />
-              </Button>
-            )}
+            {/* File Upload (Images & Zip) */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="relative"
+              title="Upload Images or .zip Archive"
+              type="button"
+              onClick={onAddFiles}
+            >
+              <Paperclip className="size-4" />
+            </Button>
+
+            {/* Voice Input Button */}
+            <Button
+              size="icon"
+              variant={isListening ? "destructive" : "ghost"}
+              className={`relative ${isListening ? "animate-pulse" : ""}`}
+              title={isListening ? "Stop Voice Input" : "Start Voice Input"}
+              type="button"
+              onClick={() => {
+                if (isListening) {
+                  stopListening();
+                } else {
+                  startListening((finalText) => {
+                    form.setValue("input", finalText);
+                  });
+                }
+              }}
+            >
+              {isListening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </Button>
 
             <Button
               size="icon"

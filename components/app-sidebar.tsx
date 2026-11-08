@@ -1,10 +1,12 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Cog, ImageIcon, MoreHorizontal, Plus } from "lucide-react";
+import { Cog, ImageIcon, LogIn, MoreHorizontal, Plus, Shield } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import AdminSettingsDialog from "@/components/admin-settings-dialog";
+import LoginDialog from "@/components/login-dialog";
 import LoadingIndicator from "@/components/loading-indicator";
 import {
   AlertDialog,
@@ -49,6 +51,18 @@ const AppSidebar = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const pathname = usePathname();
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      setIsAdmin(localStorage.getItem("CF_AI_IS_ADMIN") === "true");
+    };
+    checkAuth();
+    window.addEventListener("auth-changed", checkAuth);
+    return () => window.removeEventListener("auth-changed", checkAuth);
+  }, []);
 
   const sessions = useLiveQuery(() =>
     db.session.limit(100).reverse().sortBy("updatedAt"),
@@ -169,21 +183,69 @@ const AppSidebar = () => {
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem className="flex items-center">
-              <Button size="icon" variant="ghost" className="size-8" disabled>
-                <Cog />
+            <SidebarMenuItem className="flex items-center gap-1">
+              {isAdmin ? (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8 text-primary"
+                  title="Admin Settings & APIs"
+                  onClick={() => setAdminDialogOpen(true)}
+                >
+                  <Shield className="size-4" />
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8 text-muted-foreground"
+                  title="Admin Login"
+                  onClick={() => setLoginDialogOpen(true)}
+                >
+                  <LogIn className="size-4" />
+                </Button>
+              )}
+
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 text-muted-foreground"
+                title="Settings"
+                onClick={() => {
+                  if (isAdmin) {
+                    setAdminDialogOpen(true);
+                  } else {
+                    setLoginDialogOpen(true);
+                  }
+                }}
+              >
+                <Cog className="size-4" />
               </Button>
 
               <Link href="/" className="ml-auto">
-                <Button variant="ghost">
+                <Button variant="ghost" size="sm">
                   New Chat
-                  <Plus />
+                  <Plus className="size-4 ml-1" />
                 </Button>
               </Link>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
+
+      <AdminSettingsDialog
+        open={adminDialogOpen}
+        onOpenChange={setAdminDialogOpen}
+      />
+
+      <LoginDialog
+        open={loginDialogOpen}
+        onOpenChange={setLoginDialogOpen}
+        onLoginSuccess={() => {
+          setIsAdmin(true);
+          setAdminDialogOpen(true);
+        }}
+      />
 
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>

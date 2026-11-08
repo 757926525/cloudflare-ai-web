@@ -12,8 +12,36 @@ export const getRandomId = () => {
 
 export type StoredModelKey = "CF_AI_MODEL" | "CF_AI_MODEL_IMAGE";
 
-export const getStoredModel = (key: StoredModelKey = "CF_AI_MODEL") =>
-  models.find((m) => m.id === getStoredModelId(key)) ?? models[0];
+export const getStoredModel = (key: StoredModelKey = "CF_AI_MODEL"): Model => {
+  const id = getStoredModelId(key);
+  const found = models.find((m) => m.id === id);
+  if (found) return found;
 
-export const getStoredModelId = (key: StoredModelKey = "CF_AI_MODEL") =>
-  (localStorage.getItem(key) ?? models[0].id) as Model["id"];
+  // Check if it's a custom stored API
+  if (typeof window !== "undefined") {
+    try {
+      const customApis = JSON.parse(localStorage.getItem("CF_AI_CUSTOM_APIS") || "[]");
+      const custom = customApis.find((c: any) => c.id === id);
+      if (custom) {
+        return {
+          id: custom.id,
+          name: custom.name,
+          logo: null,
+          type: custom.type,
+          provider: "custom",
+          baseUrl: custom.baseUrl,
+          apiKey: custom.apiKey,
+        };
+      }
+    } catch {
+      // ignore parse error
+    }
+  }
+
+  return models[0];
+};
+
+export const getStoredModelId = (key: StoredModelKey = "CF_AI_MODEL") => {
+  if (typeof window === "undefined") return models[0].id;
+  return (localStorage.getItem(key) ?? models[0].id) as Model["id"];
+};

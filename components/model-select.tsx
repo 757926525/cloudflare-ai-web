@@ -1,8 +1,9 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { Box, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { getStoredCustomApis } from "@/components/admin-settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -106,12 +107,41 @@ function ComboBoxResponsive({
   const [open, setOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
+  const [allModels, setAllModels] = useState<Model[]>(models);
+
   useEffect(() => {
-    setSelectedModel(
-      models.find((item) => item.id === getStoredModelId(modalKey)) ??
-        models[0],
-    );
-  }, [models, modalKey, setSelectedModel]);
+    const updateModels = () => {
+      const customApis = getStoredCustomApis();
+      const customModelList: Model[] = customApis.map((api) => ({
+        id: api.id,
+        name: api.name,
+        logo: <Box className="size-4" />,
+        type: api.type,
+        provider: "custom" as const,
+        tag: ["custom"],
+        baseUrl: api.baseUrl,
+        apiKey: api.apiKey,
+      }));
+
+      // Filter based on whether current selection context is Image or Chat
+      const isImageContext = modalKey === "CF_AI_MODEL_IMAGE";
+      const filteredCustom = customModelList.filter((m) =>
+        isImageContext ? m.type === "Text to Image" : m.type === "Text Generation",
+      );
+
+      setAllModels([...models, ...filteredCustom]);
+    };
+
+    updateModels();
+    window.addEventListener("custom-apis-updated", updateModels);
+    return () => window.removeEventListener("custom-apis-updated", updateModels);
+  }, [models, modalKey]);
+
+  useEffect(() => {
+    const storedId = getStoredModelId(modalKey);
+    const found = allModels.find((item) => item.id === storedId);
+    setSelectedModel(found ?? allModels[0] ?? models[0]);
+  }, [allModels, modalKey, setSelectedModel, models]);
 
   useEffect(() => {
     if (selectedModel) {
@@ -137,7 +167,7 @@ function ComboBoxResponsive({
           <ModelList
             setOpen={setOpen}
             setSelectedModel={setSelectedModel}
-            models={models}
+            models={allModels}
           />
         </PopoverContent>
       </Popover>
@@ -163,7 +193,7 @@ function ComboBoxResponsive({
           <ModelList
             setOpen={setOpen}
             setSelectedModel={setSelectedModel}
-            models={models}
+            models={allModels}
           />
         </div>
       </DrawerContent>
