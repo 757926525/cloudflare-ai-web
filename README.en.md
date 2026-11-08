@@ -49,9 +49,9 @@ A modern full-featured AI Web platform supporting multi-model aggregation, AI co
 3. Select your forked repository:
    - **Project Name**: `cloudflare-ai-web`
    - **Production Branch**: `main`
-   - **Framework Preset**: `Next.js`
-   - **Build Command**: `npx @cloudflare/next-on-pages@1` or `bun run build`
-   - **Build Output Directory**: `.vercel/output/static`
+   - **Framework Preset**: `None` or `Next.js`
+   - **Build Command**: `npm run build:cf` or `bun run build:cf`
+   - **Build Output Directory**: `.open-next/assets`
 4. In **Environment Variables**, add:
    - `APP_PASSWORD`: Admin password
    - `CF_ACCOUNT_ID`: Cloudflare Account ID

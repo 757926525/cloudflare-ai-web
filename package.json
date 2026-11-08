@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cf": "opennextjs-cloudflare build",
     "start": "next start",
     "lint": "biome lint --write",
     "format": "biome format --write",
@@ -15,6 +16,7 @@
     "@ai-sdk/openai": "^4.0.111",
     "@ai-sdk/react": "^3.0.160",
     "@hookform/resolvers": "^5.2.2",
+    "@opennextjs/cloudflare": "^1.20.16",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-collapsible": "^1.1.12",

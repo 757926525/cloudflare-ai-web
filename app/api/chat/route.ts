@@ -44,7 +44,7 @@ export async function POST(request: Request) {
           : deepseek;
 
       providerModel = wrapLanguageModel({
-        model: dsInstance.chat(model) as unknown as LanguageModelV3,
+        model: dsInstance.languageModel(model) as unknown as LanguageModelV3,
         middleware: extractReasoningMiddleware({
           tagName: "think",
           startWithReasoning: model === "deepseek-reasoner",
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
         : groq;
 
       providerModel = wrapLanguageModel({
-        model: groqInstance.chat(model) as unknown as LanguageModelV3,
+        model: groqInstance.languageModel(model) as unknown as LanguageModelV3,
         middleware: extractReasoningMiddleware({
           tagName: "think",
           startWithReasoning: model.includes("r1"),
@@ -76,12 +76,12 @@ export async function POST(request: Request) {
       const clientBaseUrl = request.headers.get("X-Ollama-Base-Url");
       const ollamaInstance = clientBaseUrl
         ? createOpenAI({
-            baseURL: clientBaseUrl.replace(/\/$/, "") + "/v1",
+            baseURL: `${clientBaseUrl.replace(/\/$/, "")}/v1`,
             apiKey: "ollama",
           })
         : ollama;
 
-      providerModel = ollamaInstance.chat(model) as unknown as LanguageModelV3;
+      providerModel = ollamaInstance.languageModel(model) as unknown as LanguageModelV3;
       break;
     }
 
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         apiKey: customConfig.apiKey || "dummy",
       });
       providerModel = wrapLanguageModel({
-        model: customProvider.chat(customConfig.modelId || model) as unknown as LanguageModelV3,
+        model: customProvider.languageModel(customConfig.modelId || model) as unknown as LanguageModelV3,
         middleware: extractReasoningMiddleware({
           tagName: "think",
         }),

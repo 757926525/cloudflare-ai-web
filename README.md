@@ -49,9 +49,9 @@
 3. 选择 Fork 的仓库：
    - **项目名称**：`cloudflare-ai-web`
    - **生产分支**：`main`
-   - **框架预设**：`Next.js`
-   - **构建命令**：`npx @cloudflare/next-on-pages@1` 或 `bun run build`
-   - **构建输出目录**：`.vercel/output/static`
+   - **框架预设**：`None` 或 `Next.js`
+   - **构建命令**：`npm run build:cf` 或 `bun run build:cf`
+   - **构建输出目录**：`.open-next/assets`
 4. 在 **环境变量 (Environment Variables)** 中添加以下变量：
    - `APP_PASSWORD`：管理员密码
    - `CF_ACCOUNT_ID`：Cloudflare 账户 ID

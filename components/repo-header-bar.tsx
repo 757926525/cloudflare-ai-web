@@ -33,7 +33,6 @@ export default function RepoHeaderBar({
   const [branches, setBranches] = useState<any[]>([]);
   const [tree, setTree] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPath, setSelectedPath] = useState("");
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [pushPath, setPushPath] = useState("");
   const [pushContent, setPushContent] = useState("");
@@ -194,7 +193,9 @@ export default function RepoHeaderBar({
       });
       const data = await res.json();
       if (data.content) {
-        const decoded = atob(data.content.replace(/\s/g, ""));
+        const binary = atob(data.content.replace(/\s/g, ""));
+        const bytes = Uint8Array.from(binary, (m) => m.charCodeAt(0));
+        const decoded = new TextDecoder().decode(bytes);
         onInsertCodeContext?.(path, decoded);
         setDialogOpen(false);
         toast.success(`Loaded ${path} into editor context`);

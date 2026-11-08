@@ -1,6 +1,6 @@
-import { Archive, Brain, Download, Loader2, Volume2, VolumeX } from "lucide-react";
+import { Archive, Brain, Loader2, Volume2, VolumeX } from "lucide-react";
 import Image from "next/image";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { downloadFilesAsZip } from "@/lib/zip-utils";
 import { useVoiceChat } from "@/hooks/use-voice-chat";
