@@ -1,11 +1,18 @@
-export async function onRequestPost({ request, env }) {
+function toImageResponse(response: Response) {
+  return new Response(response.body, {
+    headers: {
+      "Content-Type": "image/png",
+    },
+  });
+}
+
+export async function onRequestPost({ request, env }: { request: Request; env: any }) {
   const body = (await request.json()) as {
     prompt?: string;
     model?: string;
   };
 
-  const prompt = body.prompt;
-  const model = body.model;
+  const { prompt, model } = body;
 
   if (!prompt || !model) {
     return new Response("Invalid request data", { status: 400 });
@@ -27,21 +34,12 @@ export async function onRequestPost({ request, env }) {
     return new Response("Error generating image", { status: 500 });
   }
 
-  const imageModels = new Set([
-    "@cf/lykon/dreamshaper-8-lcm",
-    "@cf/bytedance/stable-diffusion-xl-lightning",
+  const supportedFluxModels = new Set([
     "@cf/black-forest-labs/flux-1-schnell",
     "@cf/leonardo/lucid-origin",
   ]);
 
-  if (!imageModels.has(model)) {
-    return new Response("Unsupported image model", { status: 400 });
-  }
-
-  if (
-    model === "@cf/black-forest-labs/flux-1-schnell" ||
-    model === "@cf/leonardo/lucid-origin"
-  ) {
+  if (supportedFluxModels.has(model)) {
     const data = (await response.json()) as {
       result?: { image?: string };
     };
@@ -60,9 +58,5 @@ export async function onRequestPost({ request, env }) {
     });
   }
 
-  return new Response(response.body, {
-    headers: {
-      "Content-Type": "image/png",
-    },
-  });
+  return toImageResponse(response);
 }

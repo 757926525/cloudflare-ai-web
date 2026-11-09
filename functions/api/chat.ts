@@ -1,4 +1,3 @@
-import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAiGateway } from "ai-gateway-provider";
@@ -12,26 +11,36 @@ import {
   wrapLanguageModel,
 } from "ai";
 
-export async function onRequestPost({ request, env }) {
-  const { messages, model, provider, search } = (await request.json()) as any;
-
-  const google = createGoogleGenerativeAI({
+function getGoogleClient(env: any) {
+  return createGoogleGenerativeAI({
     apiKey: env.GOOGLE_API_KEY,
   });
+}
 
-  const aigateway = createAiGateway({
+function getAiGatewayClient(env: any) {
+  return createAiGateway({
     accountId: env.CF_ACCOUNT_ID,
     gateway: env.CF_AI_GATEWAY_NAME,
     apiKey: env.CF_AI_GATEWAY_TOKEN,
   });
+}
 
-  const workersai = createWorkersAI({
+function getWorkersAIClient(env: any) {
+  return createWorkersAI({
     accountId: env.CF_ACCOUNT_ID,
     apiKey: env.CF_WORKERS_AI_TOKEN,
   });
+}
 
-  let providerModel: LanguageModelV3;
-  const tools = {};
+export async function onRequestPost({ request, env }: { request: Request; env: any }) {
+  const { messages, model, provider, search } = (await request.json()) as any;
+
+  const google = getGoogleClient(env);
+  const aigateway = getAiGatewayClient(env);
+  const workersai = getWorkersAIClient(env);
+
+  let providerModel: any;
+  const tools: Record<string, unknown> = {};
 
   switch (provider) {
     case "google": {
@@ -41,7 +50,6 @@ export async function onRequestPost({ request, env }) {
       });
       break;
     }
-
     case "workers-ai":
     default: {
       providerModel = wrapLanguageModel({

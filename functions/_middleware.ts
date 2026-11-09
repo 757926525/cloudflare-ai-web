@@ -1,10 +1,11 @@
 export async function onRequest({ request, env, next }) {
+  const authHeader = request.headers.get("Authorization");
+
   if (!env.APP_PASSWORD) {
     return next();
   }
 
-  const authorization = request.headers.get("Authorization");
-  if (authorization !== env.APP_PASSWORD) {
+  if (authHeader !== env.APP_PASSWORD) {
     return new Response("Unauthorized", { status: 401 });
   }
 
