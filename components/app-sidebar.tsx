@@ -44,42 +44,21 @@ interface GroupedSessions {
 }
 
 const AppSidebar = () => {
-  const { session_id } = useParams();
   const router = useRouter();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const pathname = usePathname();
+  const activeSessionId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("session_id") : null;
 
-  const sessions = useLiveQuery(() =>
-    db.session.limit(100).reverse().sortBy("updatedAt"),
-  );
-
-  const groupedSessions =
-    sessions?.reduce((groups, session) => {
-      const now = new Date();
-      const updatedAt = new Date(session.updatedAt);
-      const diffTime = now.getTime() - updatedAt.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-      let groupType: GroupedSessions["type"];
-      if (diffDays === 0) {
-        groupType = "today";
-      } else if (diffDays <= 7) {
-        groupType = "last 7 days";
-      } else if (diffDays <= 30) {
-        groupType = "last 30 days";
-      } else {
-        groupType = "earlier";
-      }
-
-      const group = groups.find((g) => g.type === groupType);
-      if (group) {
-        group.sessions.push(session);
-      } else {
-        groups.push({ type: groupType, sessions: [session] });
-      }
-      return groups;
-    }, [] as GroupedSessions[]) ?? [];
+  const sessions = useLiveQuery(() => db.session.limit(100).reverse().sortBy("updatedAt"));
+  const groupedSessions = sessions?.reduce((groups, session) => {
+    const diffDays = Math.floor((Date.now() - new Date(session.updatedAt).getTime()) / (1000 * 60 * 60 * 24));
+    const groupType: GroupedSessions["type"] = diffDays === 0 ? "today" : diffDays <= 7 ? "last 7 days" : diffDays <= 30 ? "last 30 days" : "earlier";
+    const group = groups.find((item) => item.type === groupType);
+    if (group) group.sessions.push(session);
+    else groups.push({ type: groupType, sessions: [session] });
+    return groups;
+  }, [] as GroupedSessions[]) ?? [];
 
   const handleDelete = async () => {
     await db.transaction("rw", db.session, db.message, async () => {
@@ -97,29 +76,13 @@ const AppSidebar = () => {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === "/image"}>
-                <Link href="/image">
-                  <ImageIcon />
-                  Image
-                  <LoadingIndicator className="ml-auto" />
-                </Link>
+                <Link href="/image"><ImageIcon />Image<LoadingIndicator className="ml-auto" /></Link>
               </SidebarMenuButton>
-
               {pathname === "/image" && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <SidebarMenuAction>
-                      <MoreHorizontal />
-                    </SidebarMenuAction>
-                  </DropdownMenuTrigger>
+                  <DropdownMenuTrigger asChild><SidebarMenuAction><MoreHorizontal /></SidebarMenuAction></DropdownMenuTrigger>
                   <DropdownMenuContent side="right" align="start">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setDeleteConfirmOpen(true);
-                        setSessionId("image");
-                      }}
-                    >
-                      <span className="text-destructive">Delete</span>
-                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setDeleteConfirmOpen(true); setSessionId("image"); }}><span className="text-destructive">Delete</span></DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -127,78 +90,38 @@ const AppSidebar = () => {
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent className="scrollbar">
-          {groupedSessions.map(({ type, sessions }) => (
+          {groupedSessions.map(({ type, sessions: grouped }) => (
             <SidebarGroup key={type}>
               <SidebarGroupLabel>{type}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {sessions.map(({ id, name }) => (
-                    <SidebarMenuItem key={id}>
-                      <SidebarMenuButton asChild isActive={session_id === id}>
-                        <Link href={`/c/${id}`}>
-                          {name}
-                          <LoadingIndicator className="ml-auto" />
-                        </Link>
-                      </SidebarMenuButton>
-
-                      {session_id === id && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <SidebarMenuAction>
-                              <MoreHorizontal />
-                            </SidebarMenuAction>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent side="right" align="start">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setDeleteConfirmOpen(true);
-                                setSessionId(id);
-                              }}
-                            >
-                              <span className="text-destructive">Delete</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
+              <SidebarGroupContent><SidebarMenu>
+                {grouped.map(({ id, name }) => (
+                  <SidebarMenuItem key={id}>
+                    <SidebarMenuButton asChild isActive={activeSessionId === id}>
+                      <Link href={`/c?session_id=${encodeURIComponent(id)}`}>{name}<LoadingIndicator className="ml-auto" /></Link>
+                    </SidebarMenuButton>
+                    {activeSessionId === id && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild><SidebarMenuAction><MoreHorizontal /></SidebarMenuAction></DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start">
+                          <DropdownMenuItem onClick={() => { setDeleteConfirmOpen(true); setSessionId(id); }}><span className="text-destructive">Delete</span></DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu></SidebarGroupContent>
             </SidebarGroup>
           ))}
         </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem className="flex items-center">
-              <Button size="icon" variant="ghost" className="size-8" disabled>
-                <Cog />
-              </Button>
-
-              <Link href="/" className="ml-auto">
-                <Button variant="ghost">
-                  New Chat
-                  <Plus />
-                </Button>
-              </Link>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
+        <SidebarFooter><SidebarMenu><SidebarMenuItem className="flex items-center">
+          <Button size="icon" variant="ghost" className="size-8" disabled><Cog /></Button>
+          <Link href="/" className="ml-auto"><Button variant="ghost">New Chat<Plus /></Button></Link>
+        </SidebarMenuItem></SidebarMenu></SidebarFooter>
       </Sidebar>
-
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Are you sure you want to delete this session?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>Are you sure you want to delete this session?</AlertDialogTitle><AlertDialogDescription>This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
