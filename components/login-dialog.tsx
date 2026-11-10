@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LogIn, KeyRound, Lock, ShieldCheck } from "lucide-react";
+import { Lock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +52,7 @@ export default function LoginDialog({
       } else {
         toast.error(data.error || "Incorrect password");
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("Failed to authenticate. Please check network connection.");
     } finally {
       setLoading(false);

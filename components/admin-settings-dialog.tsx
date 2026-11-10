@@ -39,7 +39,7 @@ export default function AdminSettingsDialog({
   const [modelId, setModelId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [type, setType] = useState<"Text Generation" | "Text to Image">("Text Generation");
+  const [type] = useState<"Text Generation" | "Text to Image">("Text Generation");
   const [githubPat, setGithubPat] = useState("");
 
   useEffect(() => {
