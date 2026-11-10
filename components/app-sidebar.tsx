@@ -149,10 +149,10 @@ const AppSidebar = () => {
                   {sessions.map(({ id, name }) => (
                     <SidebarMenuItem key={id}>
                       <SidebarMenuButton asChild isActive={session_id === id}>
-                        <Link href={`/c/${id}`}>
+                        <a href={`/#/c/${id}`}>
                           {name}
                           <LoadingIndicator className="ml-auto" />
-                        </Link>
+                        </a>
                       </SidebarMenuButton>
 
                       {session_id === id && (

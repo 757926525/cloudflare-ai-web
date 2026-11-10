@@ -1,71 +1,97 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-import { debounce } from "next/dist/server/utils";
-import {
-  startTransition,
-  useEffect,
-  useRef,
-  useState,
-  ViewTransition,
-} from "react";
+import { ChevronDown, Download } from "lucide-react";
+import { useState } from "react";
 import AuthDialog from "@/components/auth-dialog";
 import ChatInput, { type onSendMessageProps } from "@/components/chat-input";
 import ChatList from "@/components/chat-list";
 import Footer from "@/components/footer";
 import { Button } from "@/components/ui/button";
-import { useImage } from "@/hooks/use-image";
 import { models } from "@/lib/models";
+import { getStoredModel } from "@/lib/utils";
+import { toast } from "sonner";
+import type { Message } from "@/lib/db";
 
-const Page = () => {
-  const [showToBottom, setShowToBottom] = useState(false);
-  const chatListRef = useRef<HTMLDivElement>(null);
-  const { status, sendPrompt, messages, regenerate } = useImage({
-    onUnauthorized: () => setAuthDialogOpen(true),
-  });
+export default function ImagePage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [status, setStatus] = useState<"ready" | "submitted" | "streaming" | "error">("ready");
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
 
-  useEffect(() => {
-    const onScroll = debounce(() => {
-      if (chatListRef.current) {
-        if (
-          chatListRef.current.scrollTop + chatListRef.current.clientHeight <
-          chatListRef.current.scrollHeight - 100
-        ) {
-          startTransition(() => setShowToBottom(true));
-        } else {
-          startTransition(() => setShowToBottom(false));
-        }
-      }
-    }, 100);
-    chatListRef.current?.addEventListener("scroll", onScroll);
-
-    return () => chatListRef.current?.removeEventListener("scroll", onScroll);
-  }, []);
-
   const onSendMessage = async ({ text }: onSendMessageProps) => {
-    chatListRef.current?.scrollTo({
-      top: chatListRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      parts: [{ type: "text", text }],
+      role: "user",
+      sessionId: "image",
+      createdAt: new Date(),
+    };
 
-    await sendPrompt(text);
+    setMessages((prev) => [...prev, userMsg]);
+    setStatus("submitted");
 
-    setTimeout(() => {
-      chatListRef.current?.scrollTo({
-        top: chatListRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }, 200);
+    try {
+      const storedModel = getStoredModel("CF_AI_MODEL_IMAGE");
+      const cfAccountId = localStorage.getItem("CF_ACCOUNT_ID") || "";
+      const cfToken = localStorage.getItem("CF_WORKERS_AI_TOKEN") || "";
+
+      if (!cfAccountId || !cfToken) {
+        toast.error("Please configure Cloudflare Account ID and Workers AI Token in Settings (Gear).");
+        setStatus("error");
+        return;
+      }
+
+      const res = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/run/${storedModel.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${cfToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify({ prompt: text }),
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error(`Generation failed: ${res.statusText}`);
+      }
+
+      let imageUrl = "";
+      if (
+        storedModel.id === "@cf/black-forest-labs/flux-1-schnell" ||
+        storedModel.id === "@cf/leonardo/lucid-origin"
+      ) {
+        const data = await res.json();
+        imageUrl = `data:image/png;base64,${data.result.image}`;
+      } else {
+        const blob = await res.blob();
+        imageUrl = URL.createObjectURL(blob);
+      }
+
+      const assistantMsg: Message = {
+        id: crypto.randomUUID(),
+        parts: [
+          {
+            type: "data-images",
+            data: { urls: [imageUrl] },
+          },
+        ],
+        role: "assistant",
+        sessionId: "image",
+        createdAt: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMsg]);
+      setStatus("ready");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate image");
+      setStatus("error");
+    }
   };
 
   return (
     <div className="flex flex-col h-screen">
-      <div
-        ref={chatListRef}
-        className="overflow-y-auto scrollbar px-2"
-        style={{ scrollbarGutter: "stable both-edges" }}
-      >
+      <div className="overflow-y-auto scrollbar px-2 flex-1">
         <ChatList
           status={status}
           messages={messages}
@@ -74,40 +100,17 @@ const Page = () => {
       </div>
 
       <div className="mt-auto pb-1 space-y-1 absolute bottom-0 left-0 right-0 bg-linear-to-t from-background to-transparent px-2">
-        {showToBottom && (
-          <ViewTransition>
-            <Button
-              size="icon"
-              variant="outline"
-              className="rounded-full shadow-xl absolute left-1/2 -translate-x-1/2 -top-10 z-10"
-              onClick={() => {
-                chatListRef.current?.scrollTo({
-                  top: chatListRef.current.scrollHeight,
-                  behavior: "smooth",
-                });
-              }}
-            >
-              <ChevronDown />
-            </Button>
-          </ViewTransition>
-        )}
-
-        <ViewTransition name="chat-input">
-          <ChatInput
-            models={models.filter((i) => i.type === "Text to Image")}
-            className="mx-auto max-w-3xl bg-background shadow-xl"
-            onSendMessage={onSendMessage}
-            status={status}
-            modalKey="CF_AI_MODEL_IMAGE"
-            onRetry={regenerate}
-          />
-        </ViewTransition>
+        <ChatInput
+          models={models.filter((i) => i.type === "Text to Image")}
+          className="mx-auto max-w-3xl bg-background shadow-xl"
+          onSendMessage={onSendMessage}
+          status={status}
+          modalKey="CF_AI_MODEL_IMAGE"
+        />
         <Footer />
       </div>
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
     </div>
   );
-};
-
-export default Page;
+}
