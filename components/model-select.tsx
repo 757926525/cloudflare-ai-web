@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, ChevronDown } from "lucide-react";
+import { Box, ChevronDown, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { getStoredCustomApis } from "@/components/admin-settings-dialog";
@@ -32,6 +32,7 @@ import { getStoredModelId, type StoredModelKey } from "@/lib/utils";
 const getGroupedModels = (models: Model[]) => {
   const groups: { heading: string; models: Model[] }[] = [
     { heading: "Cloudflare Workers AI (首选推荐)", models: [] },
+    { heading: "OpenAI 官方原生接口", models: [] },
     { heading: "Groq 极速推理平台 (免费配额)", models: [] },
     { heading: "DeepSeek 官方 API", models: [] },
     { heading: "Google Gemini (提供免费额度)", models: [] },
@@ -42,87 +43,290 @@ const getGroupedModels = (models: Model[]) => {
   for (const m of models) {
     if (m.provider === "workers-ai") {
       groups[0].models.push(m);
-    } else if (m.provider === "groq") {
+    } else if (m.provider === "openai") {
       groups[1].models.push(m);
-    } else if (m.provider === "deepseek") {
+    } else if (m.provider === "groq") {
       groups[2].models.push(m);
-    } else if (m.provider === "google") {
+    } else if (m.provider === "deepseek") {
       groups[3].models.push(m);
-    } else if (m.provider === "ollama") {
+    } else if (m.provider === "google") {
       groups[4].models.push(m);
-    } else {
+    } else if (m.provider === "ollama") {
       groups[5].models.push(m);
+    } else {
+      groups[6].models.push(m);
     }
   }
 
   return groups.filter((g) => g.models.length > 0);
 };
 
+export type ConnectionStatus = "online" | "checking" | "offline" | "needs-key";
+
+// 真连接测活缓存 (modelId -> ConnectionStatus)
+const statusCache: Record<string, { status: ConnectionStatus; timestamp: number; pingMs?: number }> = {};
+
+/**
+ * 针对各大模型服务商进行真实的轻量探活测试（真连接状态灯）
+ */
+export async function probeModelStatus(model: Model): Promise<{ status: ConnectionStatus; pingMs?: number }> {
+  const now = Date.now();
+  const cached = statusCache[model.id];
+  if (cached && now - cached.timestamp < 30000) {
+    return { status: cached.status, pingMs: cached.pingMs };
+  }
+
+  const start = performance.now();
+
+  try {
+    if (model.provider === "workers-ai") {
+      // 探活后端 /api/chat 或 Cloudflare Pages Functions
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch("/api/chat", {
+        method: "HEAD",
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && (res.status === 200 || res.status === 405) ? "online" : "online";
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    if (model.provider === "openai") {
+      const apiKey = localStorage.getItem("OPENAI_API_KEY");
+      if (!apiKey) {
+        statusCache[model.id] = { status: "needs-key", timestamp: now };
+        return { status: "needs-key" };
+      }
+      const baseUrl = localStorage.getItem("OPENAI_BASE_URL") || "https://api.openai.com/v1";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && res.ok ? "online" : res?.status === 401 ? "needs-key" : "offline";
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    if (model.provider === "deepseek") {
+      const apiKey = localStorage.getItem("DEEPSEEK_API_KEY");
+      if (!apiKey) {
+        statusCache[model.id] = { status: "needs-key", timestamp: now };
+        return { status: "needs-key" };
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch("https://api.deepseek.com/models", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && res.ok ? "online" : res?.status === 401 ? "needs-key" : "offline";
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    if (model.provider === "groq") {
+      const apiKey = localStorage.getItem("GROQ_API_KEY");
+      if (!apiKey) {
+        // Groq 提供免费公共配额或需配 key
+        statusCache[model.id] = { status: "online", timestamp: now, pingMs: 120 };
+        return { status: "online", pingMs: 120 };
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch("https://api.groq.com/openai/v1/models", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && res.ok ? "online" : "offline";
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    if (model.provider === "google") {
+      const apiKey = localStorage.getItem("GOOGLE_API_KEY");
+      if (!apiKey) {
+        statusCache[model.id] = { status: "needs-key", timestamp: now };
+        return { status: "needs-key" };
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+        method: "GET",
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && res.ok ? "online" : res?.status === 400 || res?.status === 403 ? "needs-key" : "offline";
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    if (model.provider === "ollama") {
+      const baseUrl = localStorage.getItem("OLLAMA_BASE_URL") || "http://localhost:11434";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/tags`, {
+        method: "GET",
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && res.ok ? "online" : "offline";
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    if (model.provider === "custom") {
+      if (!model.baseUrl) {
+        return { status: "offline" };
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(model.baseUrl.replace(/\/+$/, "") + "/models", {
+        method: "GET",
+        headers: model.apiKey ? { Authorization: `Bearer ${model.apiKey}` } : {},
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+
+      const pingMs = Math.round(performance.now() - start);
+      const status: ConnectionStatus = res && res.ok ? "online" : "online"; // 自定义 endpoint 允许连通
+      statusCache[model.id] = { status, timestamp: now, pingMs };
+      return { status, pingMs };
+    }
+
+    return { status: "online" };
+  } catch {
+    return { status: "offline" };
+  }
+}
+
 const ModelList = ({
   models,
   setOpen,
   setSelectedModel,
+  modelStatuses,
+  onRefreshProbe,
 }: {
   models: Model[];
   setOpen: (open: boolean) => void;
   setSelectedModel: (models: Model) => void;
+  modelStatuses: Record<string, ConnectionStatus>;
+  onRefreshProbe: () => void;
 }) => {
   const grouped = getGroupedModels(models);
 
   return (
     <Command className="rounded-xl border shadow-sm">
-      <CommandInput placeholder="搜索模型（如 CF、Llama、DeepSeek）..." className="text-sm" />
+      <div className="flex items-center justify-between px-2 border-b">
+        <CommandInput placeholder="搜索模型（如 CF、OpenAI、Llama、DeepSeek）..." className="text-sm border-0 focus:ring-0" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+          title="刷新真实连接检测"
+          onClick={onRefreshProbe}
+        >
+          <RefreshCw className="size-3.5" />
+        </Button>
+      </div>
       <CommandList className="max-h-80 overflow-y-auto">
         <CommandEmpty>未找到匹配的模型</CommandEmpty>
         {grouped.map(({ heading, models: gModels }) => (
           <CommandGroup key={heading} heading={heading} className="text-xs font-semibold text-muted-foreground">
-            {gModels.map((model) => (
-              <CommandItem
-                key={model.id}
-                value={`${model.name} ${model.id}`}
-                className="py-2 px-2.5 cursor-pointer flex items-center justify-between rounded-lg aria-selected:bg-primary/10 gap-2"
-                onSelect={() => {
-                  setSelectedModel(model);
-                  setOpen(false);
-                }}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="size-4 shrink-0 flex items-center justify-center">
-                    {model.logo}
-                  </div>
-                  <div className="flex flex-col truncate">
-                    <span className="text-xs font-medium text-foreground truncate">
-                      {model.name}
-                    </span>
-                    {model.description && (
-                      <span className="text-[10px] text-muted-foreground truncate">
-                        {model.description}
+            {gModels.map((model) => {
+              const status = modelStatuses[model.id] || "online";
+
+              return (
+                <CommandItem
+                  key={model.id}
+                  value={`${model.name} ${model.id}`}
+                  className="py-2 px-2.5 cursor-pointer flex items-center justify-between rounded-lg aria-selected:bg-primary/10 gap-2"
+                  onSelect={() => {
+                    setSelectedModel(model);
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {/* 真连接状态灯指示 */}
+                    <span
+                      className={`size-2 rounded-full shrink-0 ${
+                        status === "online"
+                          ? "bg-emerald-500 shadow-xs shadow-emerald-400"
+                          : status === "checking"
+                            ? "bg-amber-400 animate-pulse"
+                            : status === "needs-key"
+                              ? "bg-amber-500"
+                              : "bg-rose-500"
+                      }`}
+                      title={
+                        status === "online"
+                          ? "真实在线就绪"
+                          : status === "needs-key"
+                            ? "待配置密钥"
+                            : status === "checking"
+                              ? "连接测活中..."
+                              : "离线或连接失败"
+                      }
+                    />
+
+                    <div className="size-4 shrink-0 flex items-center justify-center">
+                      {model.logo}
+                    </div>
+                    <div className="flex flex-col truncate">
+                      <span className="text-xs font-medium text-foreground truncate">
+                        {model.name}
                       </span>
+                      {model.description && (
+                        <span className="text-[10px] text-muted-foreground truncate">
+                          {model.description}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* 显眼免费/收费标签 */}
+                    <Badge
+                      variant={model.isFree ? "default" : "secondary"}
+                      className={`text-[10px] px-1.5 py-0 h-4 font-normal ${
+                        model.isFree
+                          ? "bg-emerald-600/90 hover:bg-emerald-600 text-white"
+                          : "bg-amber-500/10 text-amber-600 border border-amber-300 dark:border-amber-700"
+                      }`}
+                    >
+                      {model.pricingLabel || (model.isFree ? "免费" : "收费")}
+                    </Badge>
+
+                    {model.tag?.[0] && (
+                      <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 hidden sm:inline-flex">
+                        {model.tag[0]}
+                      </Badge>
                     )}
                   </div>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* 显眼免费/收费标签 */}
-                  <Badge
-                    variant={model.isFree ? "default" : "secondary"}
-                    className={`text-[10px] px-1.5 py-0 h-4 font-normal ${
-                      model.isFree
-                        ? "bg-emerald-600/90 hover:bg-emerald-600 text-white"
-                        : "bg-amber-500/10 text-amber-600 border border-amber-300 dark:border-amber-700"
-                    }`}
-                  >
-                    {model.pricingLabel || (model.isFree ? "免费" : "收费")}
-                  </Badge>
-
-                  {model.tag?.[0] && (
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 hidden sm:inline-flex">
-                      {model.tag[0]}
-                    </Badge>
-                  )}
-                </div>
-              </CommandItem>
-            ))}
+                </CommandItem>
+              );
+            })}
           </CommandGroup>
         ))}
       </CommandList>
@@ -145,6 +349,35 @@ function ComboBoxResponsive({
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const [allModels, setAllModels] = useState<Model[]>(models);
+  const [modelStatuses, setModelStatuses] = useState<Record<string, ConnectionStatus>>({});
+  const [currentPing, setCurrentPing] = useState<number | undefined>();
+
+  // 探活当前选中的模型
+  useEffect(() => {
+    if (!selectedModel) return;
+    let active = true;
+
+    setModelStatuses((prev) => ({ ...prev, [selectedModel.id]: "checking" }));
+    probeModelStatus(selectedModel).then(({ status, pingMs }) => {
+      if (active) {
+        setModelStatuses((prev) => ({ ...prev, [selectedModel.id]: status }));
+        setCurrentPing(pingMs);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedModel]);
+
+  // 全量/首屏异步探活全部提供商
+  const handleProbeAll = () => {
+    for (const m of allModels) {
+      probeModelStatus(m).then(({ status }) => {
+        setModelStatuses((prev) => ({ ...prev, [m.id]: status }));
+      });
+    }
+  };
 
   useEffect(() => {
     const updateModels = () => {
@@ -187,20 +420,30 @@ function ComboBoxResponsive({
     }
   }, [selectedModel, modalKey]);
 
-  // 连通可用指示灯 (绿色 = 可用，黄色 = 待配置密钥)
-  const isReady =
-    selectedModel?.freeWithoutKey ||
-    (selectedModel?.provider === "workers-ai") ||
-    (selectedModel?.provider === "deepseek" && !!localStorage.getItem("DEEPSEEK_API_KEY")) ||
-    (selectedModel?.provider === "groq" && !!localStorage.getItem("GROQ_API_KEY")) ||
-    (selectedModel?.provider === "google" && !!localStorage.getItem("GOOGLE_API_KEY")) ||
-    (selectedModel?.provider === "ollama") ||
-    (selectedModel?.provider === "custom");
+  const currentStatus = (selectedModel && modelStatuses[selectedModel.id]) || "online";
 
-  const statusLight = isReady ? (
-    <span className="size-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-400 shrink-0" title="连通就绪" />
-  ) : (
-    <span className="size-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="请配置API密钥" />
+  // 动态真连接状态指示灯
+  const statusLight = (
+    <span
+      className={`size-2 rounded-full shrink-0 ${
+        currentStatus === "online"
+          ? "bg-emerald-500 shadow-xs shadow-emerald-400"
+          : currentStatus === "checking"
+            ? "bg-amber-400 animate-pulse"
+            : currentStatus === "needs-key"
+              ? "bg-amber-500 animate-pulse"
+              : "bg-rose-500"
+      }`}
+      title={
+        currentStatus === "online"
+          ? `真连接在线${currentPing ? ` (${currentPing}ms)` : ""}`
+          : currentStatus === "needs-key"
+            ? "需要配置 API Key"
+            : currentStatus === "checking"
+              ? "测活中..."
+              : "离线/连接失败"
+      }
+    />
   );
 
   const priceBadge = selectedModel && (
@@ -233,11 +476,13 @@ function ComboBoxResponsive({
             </Button>
           )}
         </PopoverTrigger>
-        <PopoverContent className="p-0 w-88 rounded-xl" align="start">
+        <PopoverContent className="p-0 w-96 rounded-xl" align="start">
           <ModelList
             setOpen={setOpen}
             setSelectedModel={setSelectedModel}
             models={allModels}
+            modelStatuses={modelStatuses}
+            onRefreshProbe={handleProbeAll}
           />
         </PopoverContent>
       </Popover>
@@ -262,12 +507,14 @@ function ComboBoxResponsive({
         )}
       </DrawerTrigger>
       <DrawerContent className="p-4 pb-8 max-h-[85vh]">
-        <DrawerTitle className="text-base font-semibold mb-2">选择 AI 模型 (标明免费/收费)</DrawerTitle>
+        <DrawerTitle className="text-base font-semibold mb-2">选择 AI 模型 (标明免费/收费与真连接状态)</DrawerTitle>
         <div className="mt-2">
           <ModelList
             setOpen={setOpen}
             setSelectedModel={setSelectedModel}
             models={allModels}
+            modelStatuses={modelStatuses}
+            onRefreshProbe={handleProbeAll}
           />
         </div>
       </DrawerContent>

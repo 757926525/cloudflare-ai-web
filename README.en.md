@@ -1,96 +1,74 @@
-# Cloudflare AI Web (Universal AI Platform)
+# Cloudflare AI Web
 
-[中文](./README.md) | English
+[中文](./README.md) ｜ English
 
 ![readme.png](https://github.com/user-attachments/assets/e1c4e604-568d-4778-8780-29473619744f)
 
-A modern, mobile-responsive, zero-build-error AI coding and multi-model conversation web application. Supports seamless deployment on **Cloudflare Pages**, **Vercel**, **Docker / Docker Compose**, **Netlify**, **Zeabur**, and more.
+A modern, responsive, zero-build-error multi-model AI coding and conversation platform with full Cloudflare Pages support, OpenAI integration, and one-click deployment across various cloud platforms.
 
 ---
 
 ## 🌟 Key Features
 
-- ⚡ **100% Reliable Cloudflare Pages Deployment**:
-  - Pre-configured `wrangler.jsonc`, `public/_redirects`, and `public/_headers`. Instant edge CDN build with zero runtime errors.
-- 📱 **Mobile Touch Responsive UI**:
-  - Full mobile screen support: touch-friendly drawer for model selection, collapsible sidebar, responsive chat input and repository bar.
-- 🌐 **Real-Time Model Health Indicator Light**:
-  - Visual status indicator next to each model:
-    - 🟢 **Green**: Connected & ready to stream
-    - 🟡 **Yellow**: Checking connection
-    - 🔴 **Red**: Missing API key or unreachable
-- 🇨🇳 / 🇺🇸 **Instant Bilingual Toggle (CN/EN)**:
-  - One-click language switch at the bottom of the sidebar with immediate reactive UI translation.
-- 🔗 **Multi-Git Provider Sync (GitHub / Gitee / GitLab)**:
-  - Active repository and branch indicator header.
-  - Persistent connection state with disconnect ability.
-  - Online file reader directly injects file contents into prompt context.
-  - Commit & push file changes directly from browser back to your repo.
-- ⏰ **Message & File Timestamps**:
-  - Exact timestamps on all chat messages and repository sync actions.
-  - Individual message deletion and full session reset.
-- 🎙️ **Voice Chat & 📦 Zip Upload/Download**:
-  - Microphone voice-to-text recording and AI speech playback.
-  - Direct `.zip` file extraction into project context.
-  - One-click code generation export as a downloadable `.zip` bundle.
-- 🔐 **Admin Panel for Custom APIs**:
-  - Password-protected (`APP_PASSWORD`) API manager.
-  - Dynamically add, edit, or remove any OpenAI-compatible API endpoint (e.g. OpenRouter, SiliconFlow, vLLM).
+- ⚡ **100% Seamless Cloudflare Pages Git Deployment**:
+  - Full static export with Pages Functions edge fallback, ready with `wrangler.jsonc` and `public/_redirects` / `public/_headers`.
+- 🤖 **Comprehensive AI Models Catalog (Free/Paid Badges & Real Status Probing)**:
+  - Full Cloudflare Workers AI model suite (ranked #1), Native OpenAI API option, Groq high-speed LPU, DeepSeek V3/R1, Google Gemini, local Ollama, and unlimited custom OpenAI-compatible endpoints.
+  - Real-time network probe status lights (🟢 Online, 🟡 Needs Key / Probing, 🔴 Offline).
+- 📱 **Mobile Touch Responsive & Themes**:
+  - Optimized for mobile with swipe drawer model picker, full touch inputs, and 5 custom color schemes (OLED Black, Cyber Dark, Light, Tech Purple, Aurora Cyan).
+- 🇨🇳 / 🇺🇸 **Instant Bilingual Toggle**:
+  - Chinese and English UI with instant reactivity in sidebar.
+- 🔗 **Git Multi-platform Integration (GitHub / Gitee / GitLab)**:
+  - Header status bar displaying current connected repository and branch.
+  - Read files directly into conversation context, web commit & push with timestamp, and disconnect option.
+- ⏰ **Timestamps & Message Deletion**:
+  - Accurate timestamp tracking per message and single-message deletion.
+- 🎙️ **Voice Chat (STT & TTS) & 📦 Zip File Import/Export**:
+  - Microphone voice transcription and AI audio readout.
+  - Extract uploaded `.zip` repositories directly into prompt context; download generated code blocks as `.zip`.
+- 🔐 **Admin Key Management & Custom API Hub**:
+  - Password protected (`APP_PASSWORD`) admin dialog to configure OpenAI keys, Cloudflare tokens, and custom endpoints.
 
 ---
 
 ## 🚀 Deployment Guide
 
-### 1. Cloudflare Pages Deployment (Recommended, 100% Guaranteed)
+### 1. Cloudflare Pages (Recommended)
 
-1. Fork this repository to your GitHub account.
-2. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/), navigate to **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**.
-3. Select your forked repository and configure:
-   - **Project Name**: `cloudflare-ai-web`
-   - **Production branch**: `main`
-   - **Framework preset**: **None**
-   - **Build command**: `npm run build:pages`
+1. Fork this repository to your GitHub / Gitee / GitLab account.
+2. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) -> **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**.
+3. Select your repository:
+   - **Framework preset**: None
+   - **Build command**: `npm run build`
    - **Build output directory**: `out`
-4. (Optional) Set environment variables (e.g. `APP_PASSWORD`).
-5. Click **Save and Deploy**. Your site will be online in seconds!
-
----
+4. Deploy and enjoy!
 
 ### 2. Docker / Docker Compose
-
-#### Option A: Docker Compose
 
 ```bash
 docker compose up -d
 ```
 
-#### Option B: Docker CLI
-
-```bash
-docker run -d --name cloudflare-ai-web \
-  -e CF_ACCOUNT_ID=YOUR_CF_ACCOUNT_ID \
-  -e CF_WORKERS_AI_TOKEN=YOUR_CF_WORKERS_AI_TOKEN \
-  -e APP_PASSWORD=your_password \
-  -p 3000:3000 \
-  --restart=always \
-  jazee6/cloudflare-ai-web
-```
-
 ---
 
-### 3. Vercel / Netlify / Zeabur
+## 🔑 Platform API Keys & Documentation
 
-- **Vercel**: Import Git repository, framework preset Next.js, default build command `npm run build`.
-- **Netlify**: Pre-configured `netlify.toml` with publish directory `out`.
+Open the **Settings Dialog** (gear icon) in the bottom left corner:
 
----
-
-## 🔑 Model Setup Guide
-
-Click the **Settings (Gear Icon)** in the sidebar to configure your API keys:
-
-- **DeepSeek Official**: [https://platform.deepseek.com/](https://platform.deepseek.com/)
-- **Groq Free Inference**: [https://console.groq.com/keys](https://console.groq.com/keys)
-- **Google Gemini**: [https://aistudio.google.com/](https://aistudio.google.com/)
-- **Local Ollama**: Run `ollama run qwen2.5-coder` and connect via `http://127.0.0.1:11434/v1`
-- **Custom OpenAI Endpoint**: Add any OpenAI-compatible provider with custom base URL.
+1. **OpenAI Native API**:
+   - Get API Key: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+   - Base URL defaults to `https://api.openai.com/v1`, supports custom reverse proxies.
+   - Supports GPT-4o, GPT-4o Mini, o1, and o3-mini.
+2. **Cloudflare Workers AI**:
+   - Zero configuration needed when deployed on Cloudflare Pages with AI binding, or configure Account ID & Token.
+3. **Groq**:
+   - Free API keys at [https://console.groq.com/keys](https://console.groq.com/keys)
+4. **DeepSeek**:
+   - API keys at [https://platform.deepseek.com/](https://platform.deepseek.com/)
+5. **Google Gemini**:
+   - Free API keys at [https://aistudio.google.com/](https://aistudio.google.com/)
+6. **Local Ollama**:
+   - Run `ollama run qwen2.5-coder` locally and enter `http://127.0.0.1:11434/v1`.
+7. **Custom Endpoints**:
+   - Add SiliconFlow, OpenRouter, OneAPI, or self-hosted vLLM endpoints with model name, base URL, and key.

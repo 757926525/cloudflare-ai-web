@@ -1,6 +1,6 @@
 export interface UniversalModelConfig {
   id: string;
-  provider: "deepseek" | "groq" | "ollama" | "google" | "workers-ai" | "custom";
+  provider: "openai" | "deepseek" | "groq" | "ollama" | "google" | "workers-ai" | "custom";
   baseUrl?: string;
   apiKey?: string;
   cfAccountId?: string;
@@ -113,6 +113,17 @@ export async function* streamChatUniversal({
 
   // 3. 通用转发：优先尝试 Cloudflare Pages 边缘函数 (/api/chat)
   let response: Response;
+  const apiKey =
+    config.apiKey ||
+    (config.provider === "openai" ? localStorage.getItem("OPENAI_API_KEY") : "") ||
+    (config.provider === "deepseek" ? localStorage.getItem("DEEPSEEK_API_KEY") : "") ||
+    (config.provider === "groq" ? localStorage.getItem("GROQ_API_KEY") : "") ||
+    "";
+
+  const baseUrl =
+    config.baseUrl ||
+    (config.provider === "openai" ? localStorage.getItem("OPENAI_BASE_URL") || "https://api.openai.com/v1" : "");
+
   try {
     response = await fetch("/api/chat", {
       method: "POST",
@@ -126,23 +137,22 @@ export async function* streamChatUniversal({
         model,
         messages,
         provider: config.provider,
-        baseUrl: config.baseUrl,
-        apiKey:
-          config.apiKey ||
-          (config.provider === "deepseek" ? localStorage.getItem("DEEPSEEK_API_KEY") : "") ||
-          (config.provider === "groq" ? localStorage.getItem("GROQ_API_KEY") : "") ||
-          "",
+        baseUrl,
+        apiKey,
         stream: true,
       }),
     });
   } catch {
-    // 纯静态环境且无边缘函数时直接直连端点
-    let targetUrl = (config.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "") + "/chat/completions";
+    // 纯静态环境且无边缘函数时直连端点
+    let targetUrl = (baseUrl || "https://api.openai.com/v1").replace(/\/$/, "") + "/chat/completions";
     let authHeader = "";
 
-    if (config.provider === "deepseek") {
+    if (config.provider === "openai") {
+      targetUrl = `${(baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`;
+      authHeader = `Bearer ${apiKey}`;
+    } else if (config.provider === "deepseek") {
       targetUrl = "https://api.deepseek.com/v1/chat/completions";
-      authHeader = `Bearer ${localStorage.getItem("DEEPSEEK_API_KEY") || ""}`;
+      authHeader = `Bearer ${apiKey}`;
     }
 
     response = await fetch(targetUrl, {

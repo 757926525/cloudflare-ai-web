@@ -13,6 +13,7 @@ import {
 
 export type ModelProvider =
   | "workers-ai"
+  | "openai"
   | "deepseek"
   | "groq"
   | "ollama"
@@ -51,9 +52,10 @@ const defaultLogo = (
   <div className="bg-linear-to-br from-secondary to-primary size-4 rounded-full"></div>
 );
 
-// 包含所有常见网站的大模型，且明确标记免费和收费
+// 包含 ai.jaze.top 及 Cloudflare Workers AI 官网目录中的全部可用模型，并分类标明免费/收费
 export const modelList: Model[] = [
-  // ================= 1. Cloudflare Workers AI (排首位) =================
+  // ================= 1. Cloudflare Workers AI 对话模型 (排首位) =================
+  // 旗舰推理 / 热门开源
   {
     id: "@cf/meta/llama-3.1-8b-instruct",
     name: "Llama 3.1 8B (CF Workers AI)",
@@ -63,7 +65,7 @@ export const modelList: Model[] = [
     isFree: true,
     pricingLabel: "免费",
     tag: ["CF首选", "免配置"],
-    description: "Meta 极速轻量开源大模型，适合日常问答与文本生成",
+    description: "Meta 极速轻量开源大模型，适合日常问答与代码补全",
     freeWithoutKey: true,
   },
   {
@@ -103,6 +105,17 @@ export const modelList: Model[] = [
     description: "月之暗面 Kimi 最新长文本基座，支持图文理解",
   },
   {
+    id: "@cf/moonshotai/kimi-k2.7-code",
+    name: "Kimi K2.7 Code (CF Workers AI)",
+    logo: <KIMILogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["代码编程", "高级计划"],
+    description: "月之暗面代码专属模型，长上下文工程代码构建",
+  },
+  {
     id: "@cf/zai-org/glm-4.7-flash",
     name: "GLM-4.7 Flash (CF Workers AI)",
     logo: <ZhiPuLogo />,
@@ -114,6 +127,61 @@ export const modelList: Model[] = [
     description: "智谱清言最新高速低时延大模型，中文处理极佳",
   },
   {
+    id: "@cf/zai-org/glm-5.3-flash",
+    name: "GLM-5.3 Flash (CF Workers AI)",
+    logo: <ZhiPuLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["最新旗舰", "高级推理"],
+    description: "智谱 5.3 代高频旗舰极速版，综合能力跃迁",
+  },
+  {
+    id: "@cf/zai-org/glm-5.3",
+    name: "GLM-5.3 (CF Workers AI)",
+    logo: <ZhiPuLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["旗舰全能", "超大参数"],
+    description: "智谱清言顶配通用模型，适合长难任务",
+  },
+  {
+    id: "@cf/zai-org/glm-5.2",
+    name: "GLM-5.2 (CF Workers AI)",
+    logo: <ZhiPuLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["智谱基座", "商用稳定"],
+    description: "智谱第 5 代稳定商业化主力基座",
+  },
+  {
+    id: "@cf/deepseek-ai/deepseek-v4-flash-0731",
+    name: "DeepSeek V4 Flash (CF Workers AI)",
+    logo: <DeepSeekLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["V4极速", "MoE架构"],
+    description: "DeepSeek 下一代超高速 MoE 架构推理，极致低延时",
+  },
+  {
+    id: "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    name: "DeepSeek V4 Pro (CF Workers AI)",
+    logo: <DeepSeekLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["V4顶配", "长思维链"],
+    description: "DeepSeek 完整深度思维旗舰商业版本",
+  },
+  {
     id: "@cf/openai/gpt-oss-120b",
     name: "GPT-OSS 120B (CF Workers AI)",
     logo: <OpenAILogo />,
@@ -121,8 +189,19 @@ export const modelList: Model[] = [
     provider: "workers-ai",
     isFree: true,
     pricingLabel: "免费",
-    tag: ["大参数", "全能"],
-    description: "120B 超大参数量级通用模型，复杂任务表现卓越",
+    tag: ["大参数", "全能开源"],
+    description: "120B 超大参数量级通用开源模型，复杂任务表现卓越",
+  },
+  {
+    id: "@cf/openai/gpt-oss-20b",
+    name: "GPT-OSS 20B (CF Workers AI)",
+    logo: <OpenAILogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["高吞吐", "轻量全能"],
+    description: "20B 级通用开源高效模型，响应灵敏",
   },
   {
     id: "@cf/google/gemma-4-26b-a4b-it",
@@ -133,7 +212,7 @@ export const modelList: Model[] = [
     provider: "workers-ai",
     isFree: true,
     pricingLabel: "免费",
-    tag: ["Google架构", "视觉"],
+    tag: ["Google架构", "视觉多模态"],
     description: "Google 官方 Gemma 4 系列，兼顾精准度与多模态",
   },
   {
@@ -148,8 +227,179 @@ export const modelList: Model[] = [
     tag: ["Llama4", "视觉图生文"],
     description: "Meta 最新一代多模态先锋模型，解析图像与指令理解敏捷",
   },
+  {
+    id: "@cf/meta/llama-3.2-11b-vision-instruct",
+    name: "Llama 3.2 11B Vision (CF Workers AI)",
+    logo: <MetaLogo />,
+    type: "Text Generation",
+    input: ["image"],
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["视觉多模态", "图文分析"],
+    description: "Meta 11B 视觉多模态模型，支持图像理解与问答",
+  },
+  {
+    id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    name: "Llama 3.3 70B Fast (CF Workers AI)",
+    logo: <MetaLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["70B参数", "FP8极速"],
+    description: "Meta 70B 大参数模型 FP8 量化加速版，兼具智商与速度",
+  },
+  {
+    id: "@cf/meta/llama-3.2-3b-instruct",
+    name: "Llama 3.2 3B (CF Workers AI)",
+    logo: <MetaLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["超轻量", "极速"],
+    description: "超小体积极速文本模型，毫秒级响应",
+  },
+  {
+    id: "@cf/meta/llama-3.2-1b-instruct",
+    name: "Llama 3.2 1B (CF Workers AI)",
+    logo: <MetaLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["1B参数", "超低时延"],
+    description: "1B 参数极致轻巧模型",
+  },
+  {
+    id: "@cf/qwen/qwen3.8-27b",
+    name: "Qwen 3.8 27B (CF Workers AI)",
+    logo: <QWenLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["通义最新", "中文强劲"],
+    description: "通义千问 3.8 代 27B 大模型，中文表达与创作极强",
+  },
+  {
+    id: "@cf/qwen/qwen2.5-coder-32b-instruct",
+    name: "Qwen 2.5 Coder 32B (CF Workers AI)",
+    logo: <QWenLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["编程利器", "32B代码"],
+    description: "通义千问专业级代码编程模型，精通各类开发语言与算法",
+  },
+  {
+    id: "@cf/qwen/qwen3-30b-a3b-fp8",
+    name: "Qwen 3 30B MoE (CF Workers AI)",
+    logo: <QWenLogo />,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["MoE架构", "FP8加速"],
+    description: "Qwen 3 混合专家 MoE 架构模型",
+  },
+  {
+    id: "@cf/nvidia/nemotron-3-120b-a12b",
+    name: "Nemotron 3 120B (CF Workers AI)",
+    logo: defaultLogo,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["英伟达大模型", "120B"],
+    description: "NVIDIA 官方开源 120B 大参数模型，科学推演与知识库丰富",
+  },
+  {
+    id: "@cf/mistralai/mistral-small-3.1-24b-instruct",
+    name: "Mistral Small 3.1 24B (CF Workers AI)",
+    logo: defaultLogo,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["欧洲开源", "多语言"],
+    description: "Mistral 官方高能效 24B 逻辑模型",
+  },
+  {
+    id: "@cf/ibm-granite/granite-4.0-h-micro",
+    name: "Granite 4.0 Micro (CF Workers AI)",
+    logo: defaultLogo,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["IBM企业级", "高稳定性"],
+    description: "IBM Granite 4.0 商业微型模型",
+  },
+  {
+    id: "@cf/aisingapore/gemma-sea-lion-v4-27b-it",
+    name: "SEA-LION v4 27B (CF Workers AI)",
+    logo: defaultLogo,
+    type: "Text Generation",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["东南亚多语", "27B"],
+    description: "专注东南亚多语言与跨文化文本模型",
+  },
 
-  // ================= 2. Groq 极速推理平台 =================
+  // ================= 2. OpenAI 官方原生模型 =================
+  {
+    id: "gpt-4o",
+    name: "GPT-4o (OpenAI 官方)",
+    logo: <OpenAILogo />,
+    type: "Text Generation",
+    input: ["image", "search"],
+    provider: "openai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["全能旗舰", "多模态"],
+    description: "OpenAI 旗舰全能多模态大模型，卓越的图文分析与综合能力",
+  },
+  {
+    id: "gpt-4o-mini",
+    name: "GPT-4o Mini (OpenAI 官方)",
+    logo: <OpenAILogo />,
+    type: "Text Generation",
+    input: ["image"],
+    provider: "openai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["高性价比", "极速"],
+    description: "高性价比小型模型，日常问答成本极低速度飞快",
+  },
+  {
+    id: "o1",
+    name: "o1 (OpenAI 旗舰推理)",
+    logo: <OpenAILogo />,
+    type: "Text Generation",
+    input: ["image"],
+    provider: "openai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["前沿推理", "复杂数理"],
+    description: "具备完整思维链的巅峰推理模型，专精高难度编程与数学证明",
+  },
+  {
+    id: "o3-mini",
+    name: "o3-mini (OpenAI 极速推理)",
+    logo: <OpenAILogo />,
+    type: "Text Generation",
+    provider: "openai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["STEM强项", "速度极快"],
+    description: "最新一代小型推理专家模型，STEM 领域性价比绝佳",
+  },
+
+  // ================= 3. Groq 极速推理平台 =================
   {
     id: "llama-3.3-70b-versatile",
     name: "Llama-3.3-70B (Groq 极速)",
@@ -175,7 +425,7 @@ export const modelList: Model[] = [
     freeWithoutKey: true,
   },
 
-  // ================= 3. DeepSeek 官方 API =================
+  // ================= 4. DeepSeek 官方 API =================
   {
     id: "deepseek-chat",
     name: "DeepSeek-V3 (官方平台)",
@@ -199,7 +449,7 @@ export const modelList: Model[] = [
     description: "包含完整思维链推理的 DeepSeek 旗舰推理大模型",
   },
 
-  // ================= 4. Google Gemini =================
+  // ================= 5. Google Gemini =================
   {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash (Google AI)",
@@ -225,7 +475,7 @@ export const modelList: Model[] = [
     description: "Google 旗舰大模型，支持海量多模态数据与代码推演",
   },
 
-  // ================= 5. 本地 Ollama 离线运行 =================
+  // ================= 6. 本地 Ollama 离线运行 =================
   {
     id: "qwen2.5-coder:latest",
     name: "Qwen 2.5 Coder (本地 Ollama)",
@@ -251,7 +501,7 @@ export const modelList: Model[] = [
     freeWithoutKey: true,
   },
 
-  // ================= 6. Cloudflare 文生图 =================
+  // ================= 7. Cloudflare 文生图模型 =================
   {
     id: "@cf/black-forest-labs/flux-1-schnell",
     name: "FLUX.1 Schnell (CF 快速画图)",
@@ -265,6 +515,61 @@ export const modelList: Model[] = [
     freeWithoutKey: true,
   },
   {
+    id: "@cf/black-forest-labs/flux-2-klein-9b",
+    name: "FLUX.2 Klein 9B (CF 画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["FLUX.2", "新一代9B"],
+    description: "FLUX 第 2 代 9B 精度渲染模型",
+  },
+  {
+    id: "@cf/black-forest-labs/flux-2-klein-4b",
+    name: "FLUX.2 Klein 4B (CF 画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["FLUX.2", "新一代4B"],
+    description: "FLUX 第 2 代轻量高效图像合成模型",
+  },
+  {
+    id: "@cf/black-forest-labs/flux-2-dev",
+    name: "FLUX.2 Dev (CF 画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: false,
+    pricingLabel: "按量收费",
+    tag: ["顶配画质", "FLUX.2旗舰"],
+    description: "FLUX 第 2 代开发者顶配模型，细节表现极为逼真",
+  },
+  {
+    id: "@cf/leonardo/lucid-origin",
+    name: "Lucid Origin (CF 艺术画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["Leonardo", "原画质感"],
+    description: "Leonardo 深度艺术插画模型，光影质感一流",
+  },
+  {
+    id: "@cf/leonardo/phoenix-1.0",
+    name: "Phoenix 1.0 (CF 艺术画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["Leonardo", "直接出图"],
+    description: "Leonardo 凤凰一代引擎，直接返回高质量 JPEG",
+  },
+  {
     id: "@cf/bytedance/stable-diffusion-xl-lightning",
     name: "SDXL Lightning (CF 极速画图)",
     logo: defaultLogo,
@@ -274,6 +579,28 @@ export const modelList: Model[] = [
     pricingLabel: "免费",
     tag: ["字节跳动", "闪电出图"],
     description: "秒级生成超高清艺术插画与场景图片",
+  },
+  {
+    id: "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+    name: "SDXL Base 1.0 (CF 经典画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["StabilityAI", "经典大底"],
+    description: "Stability AI 经典的 Stable Diffusion XL 1.0",
+  },
+  {
+    id: "@cf/lykon/dreamshaper-8-lcm",
+    name: "DreamShaper 8 LCM (CF 画图)",
+    logo: defaultLogo,
+    type: "Text to Image",
+    provider: "workers-ai",
+    isFree: true,
+    pricingLabel: "免费",
+    tag: ["LCM加速", "动漫写真"],
+    description: "结合潜空间一致性模型(LCM)的 DreamShaper 8 极速生图",
   },
 ];
 

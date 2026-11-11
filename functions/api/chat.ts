@@ -3,6 +3,8 @@ export const onRequest: PagesFunction<{
   CF_ACCOUNT_ID?: string;
   CF_WORKERS_AI_TOKEN?: string;
   APP_PASSWORD?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
   DEEPSEEK_API_KEY?: string;
   GROQ_API_KEY?: string;
   GOOGLE_API_KEY?: string;
@@ -104,7 +106,40 @@ export const onRequest: PagesFunction<{
       });
     }
 
-    // 3. Groq API
+    // 3. OpenAI 原生官方接口
+    if (provider === "openai") {
+      const oKey = apiKey || env.OPENAI_API_KEY;
+      if (!oKey) {
+        return new Response(JSON.stringify({ error: "请在设置中配置 OpenAI API Key (sk-...)" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const targetUrl = `${(baseUrl || env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`;
+      const openaiRes = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${oKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: true,
+        }),
+      });
+
+      return new Response(openaiRes.body, {
+        status: openaiRes.status,
+        headers: {
+          "Content-Type": openaiRes.headers.get("Content-Type") || "text/event-stream",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    // 4. Groq API
     if (provider === "groq") {
       const gKey = apiKey || env.GROQ_API_KEY;
       if (!gKey) {
@@ -136,7 +171,7 @@ export const onRequest: PagesFunction<{
       });
     }
 
-    // 4. DeepSeek 官方 API
+    // 5. DeepSeek 官方 API
     if (provider === "deepseek") {
       const dKey = apiKey || env.DEEPSEEK_API_KEY;
       if (!dKey) {
@@ -168,7 +203,7 @@ export const onRequest: PagesFunction<{
       });
     }
 
-    // 5. Custom OpenAI-compatible or other endpoints
+    // 6. Custom OpenAI-compatible or other endpoints
     const targetUrl = (baseUrl || "https://api.openai.com/v1").replace(/\/$/, "") + "/chat/completions";
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;

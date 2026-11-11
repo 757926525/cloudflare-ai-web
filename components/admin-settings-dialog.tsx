@@ -62,6 +62,10 @@ export default function AdminSettingsDialog({
   const [cfAccountId, setCfAccountId] = useState("");
   const [cfToken, setCfToken] = useState("");
 
+  // OpenAI Native API
+  const [openAiKey, setOpenAiKey] = useState("");
+  const [openAiBaseUrl, setOpenAiBaseUrl] = useState("https://api.openai.com/v1");
+
   // Other AI Provider Keys
   const [deepseekKey, setDeepseekKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
@@ -75,6 +79,8 @@ export default function AdminSettingsDialog({
       setCustomApis(getStoredCustomApis());
       setCfAccountId(localStorage.getItem("CF_ACCOUNT_ID") || "");
       setCfToken(localStorage.getItem("CF_WORKERS_AI_TOKEN") || "");
+      setOpenAiKey(localStorage.getItem("OPENAI_API_KEY") || "");
+      setOpenAiBaseUrl(localStorage.getItem("OPENAI_BASE_URL") || "https://api.openai.com/v1");
       setDeepseekKey(localStorage.getItem("DEEPSEEK_API_KEY") || "");
       setGroqKey(localStorage.getItem("GROQ_API_KEY") || "");
       setGoogleKey(localStorage.getItem("GOOGLE_API_KEY") || "");
@@ -88,12 +94,18 @@ export default function AdminSettingsDialog({
     toast.success("Cloudflare Workers AI 凭据已保存");
   };
 
+  const handleSaveOpenAiConfig = () => {
+    if (openAiKey.trim()) localStorage.setItem("OPENAI_API_KEY", openAiKey.trim());
+    if (openAiBaseUrl.trim()) localStorage.setItem("OPENAI_BASE_URL", openAiBaseUrl.trim());
+    toast.success("OpenAI 平台 API 接口配置已保存");
+  };
+
   const handleSaveProviderKeys = () => {
     if (deepseekKey.trim()) localStorage.setItem("DEEPSEEK_API_KEY", deepseekKey.trim());
     if (groqKey.trim()) localStorage.setItem("GROQ_API_KEY", groqKey.trim());
     if (googleKey.trim()) localStorage.setItem("GOOGLE_API_KEY", googleKey.trim());
     if (ollamaUrl.trim()) localStorage.setItem("OLLAMA_BASE_URL", ollamaUrl.trim());
-    toast.success("大模型提供商 API Key 已成功保存");
+    toast.success("各大模型提供商 API Key 已成功保存");
   };
 
   const handleAddApi = (e: React.FormEvent) => {
@@ -150,7 +162,7 @@ export default function AdminSettingsDialog({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shield className="size-5 text-primary" />
-              <DialogTitle className="text-base sm:text-lg">系统设置与知识中心</DialogTitle>
+              <DialogTitle className="text-base sm:text-lg">系统设置与 API 管理中心</DialogTitle>
             </div>
             <Button
               variant="outline"
@@ -162,7 +174,7 @@ export default function AdminSettingsDialog({
             </Button>
           </div>
           <DialogDescription className="text-xs">
-            管理 API 密钥、查看添加说明、模型详情、项目部署指南与切换主题/界面。
+            管理平台 API 密钥（含 OpenAI 原生接口）、自定义 API 端点、查看使用说明文件与部署指南。
           </DialogDescription>
         </DialogHeader>
 
@@ -198,7 +210,7 @@ export default function AdminSettingsDialog({
             className="h-8 text-xs shrink-0"
             onClick={() => setActiveTab("guide")}
           >
-            <BookOpen className="size-3.5 mr-1" /> API 与模型详情
+            <BookOpen className="size-3.5 mr-1" /> API 使用说明文件
           </Button>
           <Button
             size="sm"
@@ -211,14 +223,15 @@ export default function AdminSettingsDialog({
         </div>
 
         <div className="space-y-4 pt-1">
-          {/* TAB 1: 平台密钥 */}
+          {/* TAB 1: 平台密钥 (含 OpenAI 官方) */}
           {activeTab === "keys" && (
             <div className="space-y-4">
+              {/* Cloudflare Workers AI */}
               <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-xs sm:text-sm flex items-center gap-1.5">
                     <Cloud className="size-4 text-orange-500" />
-                    Cloudflare Workers AI 认证
+                    Cloudflare Workers AI 认证 (首选推荐)
                   </span>
                   <Button size="sm" onClick={handleSaveCfConfig} className="h-7 text-xs">
                     保存 CF 密钥
@@ -245,6 +258,42 @@ export default function AdminSettingsDialog({
                 </div>
               </div>
 
+              {/* OpenAI 官方平台 */}
+              <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs sm:text-sm flex items-center gap-1.5">
+                    <Sparkles className="size-4 text-emerald-500" />
+                    OpenAI 官方原生接口选项
+                  </span>
+                  <Button size="sm" onClick={handleSaveOpenAiConfig} className="h-7 text-xs">
+                    保存 OpenAI 配置
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div className="space-y-1">
+                    <Label className="text-xs">OpenAI API Key (sk-...)</Label>
+                    <Input
+                      type="password"
+                      placeholder="sk-proj-..."
+                      value={openAiKey}
+                      onChange={(e) => setOpenAiKey(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">OpenAI 接口地址 (Base URL)</Label>
+                    <Input
+                      placeholder="https://api.openai.com/v1"
+                      value={openAiBaseUrl}
+                      onChange={(e) => setOpenAiBaseUrl(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  支持官方直连以及任意兼容中转域名（如 OneAPI / NewAPI / 代理等），支持 GPT-4o, GPT-4o-mini, o1, o3-mini 等所有 OpenAI 原生模型。
+                </p>
+              </div>
+
+              {/* 其他常用大模型 */}
               <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-xs sm:text-sm flex items-center gap-1.5">
@@ -302,7 +351,7 @@ export default function AdminSettingsDialog({
               <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
                 <h3 className="font-semibold text-xs sm:text-sm flex items-center gap-1.5">
                   <Globe className="size-4 text-blue-500" />
-                  添加任意 OpenAI 兼容端点 (SiliconFlow / OpenRouter / OneAPI / vLLM)
+                  手动加入任意 OpenAI 兼容端点 (SiliconFlow / OpenRouter / OneAPI / vLLM)
                 </h3>
                 <form onSubmit={handleAddApi} className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
@@ -466,37 +515,45 @@ export default function AdminSettingsDialog({
             </div>
           )}
 
-          {/* TAB 4: API 与模型使用指南 */}
+          {/* TAB 4: API 与模型使用说明文件 */}
           {activeTab === "guide" && (
             <div className="border rounded-xl p-4 space-y-3 bg-muted/20 text-xs text-muted-foreground leading-relaxed">
               <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                 <BookOpen className="size-4 text-primary" />
-                各种模型详情与 API 获取说明
+                API 接口使用说明与模型详细指南
               </h3>
               <div className="space-y-3">
                 <div className="p-2.5 rounded-lg bg-background border space-y-1">
-                  <div className="font-semibold text-foreground">1. Cloudflare Workers AI (排首位)</div>
+                  <div className="font-semibold text-foreground">1. OpenAI 官方原生接口说明</div>
                   <p>
-                    全球分布式边缘推理，支持 Llama 3.1、QWQ-32B、Kimi K2.6、GLM-4.7 等大模型。
-                    在 Cloudflare 控制台创建 Workers AI 令牌即可填入获得极速体验。
+                    • <strong>获取方式</strong>：访问 <code className="bg-muted px-1 rounded">https://platform.openai.com/api-keys</code> 创建 API Key。<br />
+                    • <strong>接口地址 (Base URL)</strong>：默认为 <code>https://api.openai.com/v1</code>。若在国内无法直连或使用聚合转接，可填写自定义反向代理或中转地址。<br />
+                    • <strong>支持模型</strong>：GPT-4o、GPT-4o-mini、o1、o3-mini，输入图文多模态及推理链全支持。
                   </p>
                 </div>
                 <div className="p-2.5 rounded-lg bg-background border space-y-1">
-                  <div className="font-semibold text-foreground">2. Groq 极速推理 (限额免费)</div>
+                  <div className="font-semibold text-foreground">2. Cloudflare Workers AI (排首位)</div>
                   <p>
-                    基于 LPU 硬件芯片加速，每秒数十 Token 输出。可在 <code className="bg-muted px-1 rounded">console.groq.com/keys</code> 免费创建 API Key。
+                    • <strong>获取方式</strong>：登录 Cloudflare 控制台 -&gt; 点击左侧 Workers &amp; Pages -&gt; 访问 AI -&gt; 管理账户 API 令牌，使用 Workers AI 模板创建。<br />
+                    • <strong>全功能</strong>：完全无需服务端 Node.js 镜像，部署在 Cloudflare Pages 上即可通过 Pages Functions 零成本无限制转发。
                   </p>
                 </div>
                 <div className="p-2.5 rounded-lg bg-background border space-y-1">
-                  <div className="font-semibold text-foreground">3. Google Gemini (含免费额度)</div>
+                  <div className="font-semibold text-foreground">3. Groq 极速推理 (限额免费)</div>
                   <p>
-                    在 Google AI Studio (<code className="bg-muted px-1 rounded">aistudio.google.com</code>) 申请，支持 Gemini 2.5 Flash / Pro 超长上下文推理。
+                    基于 LPU 硬件芯片加速，每秒数十 Token 输出。可在 <code className="bg-muted px-1 rounded">https://console.groq.com/keys</code> 免费创建 API Key。
                   </p>
                 </div>
                 <div className="p-2.5 rounded-lg bg-background border space-y-1">
-                  <div className="font-semibold text-foreground">4. 本地 Ollama (完全免费离线)</div>
+                  <div className="font-semibold text-foreground">4. Google Gemini (含免费额度)</div>
                   <p>
-                    本地运行 <code className="bg-muted px-1 rounded">ollama run qwen2.5-coder</code>，零数据泄露风险，无任何额外开销。
+                    在 Google AI Studio (<code className="bg-muted px-1 rounded">https://aistudio.google.com/apikey</code>) 申请，支持 Gemini 2.5 Flash / Pro 超长上下文推理。
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-background border space-y-1">
+                  <div className="font-semibold text-foreground">5. 本地 Ollama (完全免费离线)</div>
+                  <p>
+                    本地安装 Ollama 并执行 <code className="bg-muted px-1 rounded">ollama run qwen2.5-coder</code>，零数据泄露风险，无任何额外开销。
                   </p>
                 </div>
               </div>
