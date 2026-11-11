@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
-  Earth,
   Loader2,
   Mic,
   MicOff,
@@ -22,7 +21,6 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import type { Model } from "@/lib/models";
 import { cn, type StoredModelKey } from "@/lib/utils";
-import { Toggle } from "@/components/ui/toggle";
 import { extractZipFiles } from "@/lib/zip-utils";
 import { useVoiceChat } from "@/hooks/use-voice-chat";
 
@@ -72,7 +70,6 @@ const ChatInput = ({
   const input = form.watch("input");
   const [selectedModel, setSelectedModel] = useState<Model>();
   const [files, setFiles] = useState<FileUIPart[]>([]);
-  const [searchEnabled, setSearchEnabled] = useState(false);
   const { isListening, startListening, stopListening, transcript } = useVoiceChat();
 
   useEffect(() => {
@@ -80,10 +77,6 @@ const ChatInput = ({
       form.setValue("input", transcript);
     }
   }, [transcript, form]);
-
-  useEffect(() => {
-    setSearchEnabled(localStorage.getItem("CF_AI_SEARCH_ENABLED") === "true");
-  }, []);
 
   useEffect(() => {
     if (!selectedModel?.input?.includes("image")) {
@@ -106,7 +99,6 @@ const ChatInput = ({
         onStop?.();
         break;
       case "error":
-        // 用户要求直接发送，重试也直接触发发送
         onRetry ? onRetry() : form.handleSubmit(onSubmit)();
         break;
       case "ready":
@@ -288,35 +280,17 @@ const ChatInput = ({
                 modalKey={modalKey ?? "CF_AI_MODEL"}
               />
 
-              {selectedModel?.input?.includes("search") && (
-                <Toggle
-                  aria-label="联网搜索"
-                  size="sm"
-                  className="h-8 gap-1 text-xs data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
-                  pressed={searchEnabled}
-                  onPressedChange={(pressed) => {
-                    localStorage.setItem(
-                      "CF_AI_SEARCH_ENABLED",
-                      pressed ? "true" : "false",
-                    );
-                    setSearchEnabled(pressed);
-                  }}
-                >
-                  <Earth className="size-3.5" />
-                  <span className="hidden sm:inline">联网</span>
-                </Toggle>
-              )}
-
-              {/* 上传图片 & Zip */}
+              {/* 去掉无用的联网按键，文件上传按键放置在该醒目位置 */}
               <Button
                 size="sm"
-                variant="ghost"
-                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                variant="outline"
+                className="h-8 px-2.5 text-xs flex items-center gap-1 font-medium bg-background text-foreground hover:bg-accent border-border/60 shadow-2xs"
                 title="上传图片或代码压缩包 (.zip)"
                 type="button"
                 onClick={onAddFiles}
               >
-                <Paperclip className="size-4" />
+                <Paperclip className="size-3.5" />
+                <span>上传文件/Zip</span>
               </Button>
 
               {/* 语音输入按钮 */}

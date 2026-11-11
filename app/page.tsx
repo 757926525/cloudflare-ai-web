@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronDown, Plus, Trash2, MessageSquare, Pause, Play } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, ViewTransition } from "react";
 import { toast } from "sonner";
 import AuthDialog from "@/components/auth-dialog";
@@ -16,8 +16,9 @@ import { models } from "@/lib/models";
 import { getStoredModel } from "@/lib/utils";
 import { streamChatUniversal } from "@/lib/universal-client";
 import { useI18n } from "@/lib/i18n";
+import LoginDialog from "@/components/login-dialog";
 
-// 预设默认 3 个多会话槽位，方便用户随时切换
+// 预设默认 3 个多会话槽位，保持至少三个
 const DEFAULT_PRESET_SESSIONS = [
   { id: "session-slot-1", name: "会话 1" },
   { id: "session-slot-2", name: "会话 2" },
@@ -31,10 +32,33 @@ export default function Home() {
   const [showToBottom, setShowToBottom] = useState(false);
   const chatListRef = useRef<HTMLDivElement>(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [forceLoginModalOpen, setForceLoginModalOpen] = useState(false);
+  const [isLockedByAuth, setIsLockedByAuth] = useState(false);
   const { t } = useI18n();
 
   // 暂停与终止控制器 (AbortController)
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 检查是否开启“开启登录界面（强制仅管理员使用）”
+  const checkAuthLock = () => {
+    const isEnforced = localStorage.getItem("CF_AI_AUTH_REQUIRED") === "true";
+    const isAdmin = localStorage.getItem("CF_AI_IS_ADMIN") === "true";
+    const locked = isEnforced && !isAdmin;
+    setIsLockedByAuth(locked);
+    if (locked) {
+      setForceLoginModalOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    checkAuthLock();
+    window.addEventListener("auth-changed", checkAuthLock);
+    window.addEventListener("auth-enforce-changed", checkAuthLock);
+    return () => {
+      window.removeEventListener("auth-changed", checkAuthLock);
+      window.removeEventListener("auth-enforce-changed", checkAuthLock);
+    };
+  }, []);
 
   // 初始化预设 3 个会话槽位
   useEffect(() => {
@@ -72,13 +96,6 @@ export default function Home() {
     };
   }, []);
 
-  const allSessions = useLiveQuery(
-    async () => {
-      return await db.session.limit(20).reverse().sortBy("updatedAt");
-    },
-    [],
-  );
-
   const sessionMessages = useLiveQuery(
     async () => {
       if (!currentSessionId) return [] as Message[];
@@ -107,32 +124,6 @@ export default function Home() {
     [],
   );
 
-  const switchSession = (id: string) => {
-    if (status === "streaming") {
-      handleStopStreaming();
-    }
-    setCurrentSessionId(id);
-    window.location.hash = `#/c/${id}`;
-  };
-
-  const createNewSession = async () => {
-    const newId = `session-${Date.now()}`;
-    await db.session.add({
-      id: newId,
-      name: `新会话 ${allSessions ? allSessions.length + 1 : 4}`,
-      updatedAt: new Date(),
-    });
-    switchSession(newId);
-    toast.success("已创建并切换至新会话");
-  };
-
-  const clearCurrentSessionMessages = async () => {
-    if (!currentSessionId) return;
-    await db.message.where("sessionId").equals(currentSessionId).delete();
-    setMessages([]);
-    toast.info("已清空当前会话的消息记录");
-  };
-
   const handleStopStreaming = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -143,6 +134,12 @@ export default function Home() {
   };
 
   const onSendMessage = async (data: onSendMessageProps) => {
+    if (isLockedByAuth) {
+      toast.error("管理员已开启全站访问锁定，请先登录管理员账户");
+      setForceLoginModalOpen(true);
+      return;
+    }
+
     const { text, files } = data;
     const sessionId = currentSessionId || "session-slot-1";
 
@@ -259,76 +256,10 @@ export default function Home() {
     });
   };
 
-  // 会话列表（至少 3 个会话供用户无缝切换）
-  const sessionList = (allSessions && allSessions.length > 0) ? allSessions : DEFAULT_PRESET_SESSIONS;
-
   return (
     <div className="flex flex-col h-screen bg-background">
+      {/* 顶部仅显示干净清爽的代码仓库与分支横幅（会话历史移到左侧侧边栏） */}
       <RepoHeaderBar onInsertCodeContext={handleInsertCodeContext} />
-
-      {/* 顶部多会话快速切换标签栏 (至少支持 3 个会话切换 + 清空/暂停) */}
-      <div className="w-full bg-background/80 border-b border-border/40 px-3 py-1 flex items-center justify-between gap-1 overflow-x-auto text-xs backdrop-blur-xs">
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
-          {sessionList.slice(0, 6).map((s) => {
-            const isActive = currentSessionId === s.id;
-            return (
-              <Button
-                key={s.id}
-                size="sm"
-                variant={isActive ? "default" : "ghost"}
-                className={`h-7 px-2.5 text-xs rounded-lg flex items-center gap-1.5 shrink-0 transition-all ${
-                  isActive ? "shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => switchSession(s.id)}
-              >
-                <MessageSquare className="size-3" />
-                <span className="max-w-[80px] truncate">{s.name}</span>
-              </Button>
-            );
-          })}
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs rounded-lg shrink-0"
-            title="新建会话"
-            onClick={createNewSession}
-          >
-            <Plus className="size-3 mr-0.5" />
-            新建会话
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-1 shrink-0">
-          {/* 暂停按钮 */}
-          {status === "streaming" && (
-            <Button
-              size="sm"
-              variant="destructive"
-              className="h-7 text-xs px-2 flex items-center gap-1 animate-pulse"
-              onClick={handleStopStreaming}
-              title="暂停生成"
-            >
-              <Pause className="size-3" />
-              <span>暂停</span>
-            </Button>
-          )}
-
-          {/* 清空历史按钮 */}
-          {messages.length > 0 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs text-muted-foreground hover:text-destructive px-2"
-              title="清空当前会话"
-              onClick={clearCurrentSessionMessages}
-            >
-              <Trash2 className="size-3 mr-1" />
-              清空
-            </Button>
-          )}
-        </div>
-      </div>
 
       {messages.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 px-4">
@@ -349,6 +280,7 @@ export default function Home() {
                 className="w-full"
                 onSendMessage={onSendMessage}
                 onStop={handleStopStreaming}
+                status={status}
               />
             </ViewTransition>
           </div>
@@ -401,6 +333,16 @@ export default function Home() {
       )}
 
       <AuthDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} />
+
+      {/* 强制登录弹窗（当管理员在后台开启登录界面保护时） */}
+      <LoginDialog
+        open={forceLoginModalOpen}
+        onOpenChange={setForceLoginModalOpen}
+        onLoginSuccess={() => {
+          setIsLockedByAuth(false);
+          setForceLoginModalOpen(false);
+        }}
+      />
     </div>
   );
 }

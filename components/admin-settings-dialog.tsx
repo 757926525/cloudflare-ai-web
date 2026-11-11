@@ -15,6 +15,10 @@ import {
   Palette,
   Smartphone,
   Monitor,
+  Database,
+  Lock,
+  UploadCloud,
+  DownloadCloud,
 } from "lucide-react";
 import {
   Dialog,
@@ -30,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import type { CustomApiConfig } from "@/lib/models";
 import { useThemeCustom, type ColorTheme, type ViewportMode } from "@/lib/theme-custom";
+import { pushChatHistoryToKv, pullChatHistoryFromKv } from "@/lib/kv-sync";
 
 export const CUSTOM_API_STORAGE_KEY = "CF_AI_CUSTOM_APIS";
 
@@ -50,7 +55,7 @@ export default function AdminSettingsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"keys" | "custom" | "guide" | "deploy" | "appearance">("keys");
+  const [activeTab, setActiveTab] = useState<"keys" | "custom" | "kv" | "guide" | "deploy" | "appearance">("keys");
   const [customApis, setCustomApis] = useState<CustomApiConfig[]>([]);
   const [name, setName] = useState("");
   const [modelId, setModelId] = useState("");
@@ -61,6 +66,13 @@ export default function AdminSettingsDialog({
   // Cloudflare Workers AI Credentials
   const [cfAccountId, setCfAccountId] = useState("");
   const [cfToken, setCfToken] = useState("");
+
+  // Cloudflare KV Namespace ID
+  const [kvNamespaceId, setKvNamespaceId] = useState("");
+  const [syncing, setSyncing] = useState(false);
+
+  // 全站管理员登录保护开关 (开启后只有管理员登录才能使用，关闭时普通用户可用，默认关闭)
+  const [authEnforced, setAuthEnforced] = useState(false);
 
   // OpenAI Native API
   const [openAiKey, setOpenAiKey] = useState("");
@@ -79,6 +91,8 @@ export default function AdminSettingsDialog({
       setCustomApis(getStoredCustomApis());
       setCfAccountId(localStorage.getItem("CF_ACCOUNT_ID") || "");
       setCfToken(localStorage.getItem("CF_WORKERS_AI_TOKEN") || "");
+      setKvNamespaceId(localStorage.getItem("CF_KV_NAMESPACE_ID") || "");
+      setAuthEnforced(localStorage.getItem("CF_AI_AUTH_REQUIRED") === "true");
       setOpenAiKey(localStorage.getItem("OPENAI_API_KEY") || "");
       setOpenAiBaseUrl(localStorage.getItem("OPENAI_BASE_URL") || "https://api.openai.com/v1");
       setDeepseekKey(localStorage.getItem("DEEPSEEK_API_KEY") || "");
@@ -106,6 +120,46 @@ export default function AdminSettingsDialog({
     if (googleKey.trim()) localStorage.setItem("GOOGLE_API_KEY", googleKey.trim());
     if (ollamaUrl.trim()) localStorage.setItem("OLLAMA_BASE_URL", ollamaUrl.trim());
     toast.success("各大模型提供商 API Key 已成功保存");
+  };
+
+  const handleToggleAuthEnforced = (checked: boolean) => {
+    setAuthEnforced(checked);
+    localStorage.setItem("CF_AI_AUTH_REQUIRED", checked ? "true" : "false");
+    window.dispatchEvent(new Event("auth-enforce-changed"));
+    if (checked) {
+      toast.warning("已开启强制登录界面！普通访客必须登录管理员后方可使用");
+    } else {
+      toast.info("已关闭登录界面限制，普通访客可自由使用");
+    }
+  };
+
+  const handleSaveKvConfig = () => {
+    localStorage.setItem("CF_KV_NAMESPACE_ID", kvNamespaceId.trim());
+    toast.success("Cloudflare KV 配置已保存");
+  };
+
+  const handlePushToKv = async () => {
+    setSyncing(true);
+    try {
+      await pushChatHistoryToKv();
+      toast.success("本地历史对话已成功备份同步至 Cloudflare KV 数据库！");
+    } catch (err: any) {
+      toast.error(err.message || "同步至 KV 失败");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handlePullFromKv = async () => {
+    setSyncing(true);
+    try {
+      const restored = await pullChatHistoryFromKv();
+      toast.success(`成功从 Cloudflare KV 恢复 ${restored} 个历史会话！`);
+    } catch (err: any) {
+      toast.error(err.message || "从 KV 恢复失败");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleAddApi = (e: React.FormEvent) => {
@@ -174,7 +228,7 @@ export default function AdminSettingsDialog({
             </Button>
           </div>
           <DialogDescription className="text-xs">
-            管理平台 API 密钥（含 OpenAI 原生接口）、自定义 API 端点、查看使用说明文件与部署指南。
+            管理平台 API 密钥（含 OpenAI 原生接口）、全站访问登录开关、Cloudflare KV 同步与多端部署。
           </DialogDescription>
         </DialogHeader>
 
@@ -187,6 +241,14 @@ export default function AdminSettingsDialog({
             onClick={() => setActiveTab("keys")}
           >
             <Key className="size-3.5 mr-1" /> 平台 API 密钥
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "kv" ? "default" : "ghost"}
+            className="h-8 text-xs shrink-0"
+            onClick={() => setActiveTab("kv")}
+          >
+            <Database className="size-3.5 mr-1" /> KV 数据库同步
           </Button>
           <Button
             size="sm"
@@ -223,9 +285,32 @@ export default function AdminSettingsDialog({
         </div>
 
         <div className="space-y-4 pt-1">
-          {/* TAB 1: 平台密钥 (含 OpenAI 官方) */}
+          {/* TAB 1: 平台密钥 (含 OpenAI 官方与管理员登录界面开关) */}
           {activeTab === "keys" && (
             <div className="space-y-4">
+              {/* 全站管理员登录锁定开关 */}
+              <div className="border rounded-xl p-4 space-y-2 bg-amber-500/5 border-amber-500/20">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs sm:text-sm flex items-center gap-1.5 text-foreground">
+                    <Lock className="size-4 text-amber-500" />
+                    开启登录界面保护 (全站仅管理员可用)
+                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={authEnforced}
+                      onChange={(e) => handleToggleAuthEnforced(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-muted peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <strong>开关作用说明：</strong>
+                  开启后，任何未登录的普通访客打开网站时将强制弹出登录界面，只有输入管理员密码（<code>APP_PASSWORD</code>）登录后才能使用；关闭时，普通访客可无需登录直接使用。默认关闭。
+                </p>
+              </div>
+
               {/* Cloudflare Workers AI */}
               <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
                 <div className="flex items-center justify-between">
@@ -288,9 +373,6 @@ export default function AdminSettingsDialog({
                     />
                   </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  支持官方直连以及任意兼容中转域名（如 OneAPI / NewAPI / 代理等），支持 GPT-4o, GPT-4o-mini, o1, o3-mini 等所有 OpenAI 原生模型。
-                </p>
               </div>
 
               {/* 其他常用大模型 */}
@@ -345,7 +427,64 @@ export default function AdminSettingsDialog({
             </div>
           )}
 
-          {/* TAB 2: 自定义 API 接入 */}
+          {/* TAB 2: Cloudflare KV 数据库同步 */}
+          {activeTab === "kv" && (
+            <div className="space-y-4">
+              <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs sm:text-sm flex items-center gap-1.5 text-foreground">
+                    <Database className="size-4 text-blue-500" />
+                    Cloudflare KV 命名空间配置
+                  </span>
+                  <Button size="sm" onClick={handleSaveKvConfig} className="h-7 text-xs">
+                    保存 KV 配置
+                  </Button>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <Label className="text-xs">Cloudflare KV Namespace ID</Label>
+                  <Input
+                    placeholder="例如: 32位 KV 命名空间 ID (绑定 CF_AI_KV 时可留空)"
+                    value={kvNamespaceId}
+                    onChange={(e) => setKvNamespaceId(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    若已在 Cloudflare Pages 设置中绑定 <code>CF_AI_KV</code> 变量，则自动实现零配置云端同步。
+                  </p>
+                </div>
+              </div>
+
+              <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
+                <span className="font-semibold text-xs sm:text-sm text-foreground">
+                  历史对话数据云端同步操作
+                </span>
+                <p className="text-xs text-muted-foreground">
+                  连接 KV 数据库后，你可以将所有历史会话和消息一键备份到云端，也可以从云端拉取恢复历史对话：
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <Button
+                    variant="outline"
+                    className="h-9 text-xs flex items-center justify-center gap-1.5"
+                    onClick={handlePushToKv}
+                    disabled={syncing}
+                  >
+                    <UploadCloud className="size-4 text-primary" />
+                    备份当前历史到 KV 数据库
+                  </Button>
+                  <Button
+                    variant="default"
+                    className="h-9 text-xs flex items-center justify-center gap-1.5"
+                    onClick={handlePullFromKv}
+                    disabled={syncing}
+                  >
+                    <DownloadCloud className="size-4" />
+                    从 KV 数据库恢复历史对话
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: 自定义 API 接入 */}
           {activeTab === "custom" && (
             <div className="space-y-4">
               <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
@@ -449,7 +588,7 @@ export default function AdminSettingsDialog({
             </div>
           )}
 
-          {/* TAB 3: 界面与主题 */}
+          {/* TAB 4: 界面与主题 */}
           {activeTab === "appearance" && (
             <div className="space-y-4">
               <div className="border rounded-xl p-4 space-y-3 bg-muted/20">
@@ -515,7 +654,7 @@ export default function AdminSettingsDialog({
             </div>
           )}
 
-          {/* TAB 4: API 与模型使用说明文件 */}
+          {/* TAB 5: API 与模型使用说明文件 */}
           {activeTab === "guide" && (
             <div className="border rounded-xl p-4 space-y-3 bg-muted/20 text-xs text-muted-foreground leading-relaxed">
               <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
@@ -560,7 +699,7 @@ export default function AdminSettingsDialog({
             </div>
           )}
 
-          {/* TAB 5: 部署全指南 */}
+          {/* TAB 6: 部署全指南 */}
           {activeTab === "deploy" && (
             <div className="border rounded-xl p-4 space-y-3 bg-muted/20 text-xs text-muted-foreground leading-relaxed">
               <h3 className="font-semibold text-sm text-foreground flex items-center gap-1.5">

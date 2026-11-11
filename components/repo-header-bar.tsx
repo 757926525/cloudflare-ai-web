@@ -11,6 +11,9 @@ import {
   FileText,
   Unlink,
   ExternalLink,
+  Trash2,
+  Key,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,12 +38,22 @@ export interface ActiveRepo {
   updatedAt?: string;
 }
 
-// 快速跳转至各仓库网站申请授权 Token 的地址
+export interface SavedAuthSite {
+  id: string;
+  platform: GitPlatform;
+  token: string;
+  alias: string;
+  savedAt: string;
+}
+
+// 经过验证的标准 Token 授权申请页面链接
 const AUTH_URLS: Record<GitPlatform, string> = {
-  github: "https://github.com/settings/tokens/new?description=CloudflareAIWeb&scopes=repo",
+  github: "https://github.com/settings/tokens/new?description=CloudflareAIWeb&scopes=repo,read:user",
   gitee: "https://gitee.com/profile/personal_access_tokens/new",
   gitlab: "https://gitlab.com/-/user_settings/personal_access_tokens",
 };
+
+const SAVED_SITES_STORAGE_KEY = "CF_AI_SAVED_AUTH_SITES";
 
 export default function RepoHeaderBar({
   onInsertCodeContext,
@@ -50,6 +63,8 @@ export default function RepoHeaderBar({
   const [activeRepo, setActiveRepo] = useState<ActiveRepo | null>(null);
   const [platform, setPlatform] = useState<GitPlatform>("github");
   const [token, setToken] = useState<string>("");
+  const [siteAlias, setSiteAlias] = useState<string>("");
+  const [savedSites, setSavedSites] = useState<SavedAuthSite[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [repos, setRepos] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
@@ -61,38 +76,108 @@ export default function RepoHeaderBar({
   const [commitMsg, setCommitMsg] = useState("");
   const [pushing, setPushing] = useState(false);
 
-  useEffect(() => {
-    const updateToken = () => {
+  // 载入已保存的授权站点与活跃仓库
+  const loadSavedData = () => {
+    try {
+      const raw = localStorage.getItem(SAVED_SITES_STORAGE_KEY);
+      const sites: SavedAuthSite[] = raw ? JSON.parse(raw) : [];
+      setSavedSites(sites);
+
       const storedPlatform = (localStorage.getItem("ACTIVE_REPO_PLATFORM") as GitPlatform) || "github";
       setPlatform(storedPlatform);
 
-      const storedToken =
-        storedPlatform === "gitee"
+      const currentSite = sites.find((s) => s.platform === storedPlatform);
+      const currentToken =
+        currentSite?.token ||
+        (storedPlatform === "gitee"
           ? localStorage.getItem("GITEE_ACCESS_TOKEN") || ""
           : storedPlatform === "gitlab"
           ? localStorage.getItem("GITLAB_ACCESS_TOKEN") || ""
-          : localStorage.getItem("GITHUB_ACCESS_TOKEN") || "";
-      setToken(storedToken);
+          : localStorage.getItem("GITHUB_ACCESS_TOKEN") || "");
+      setToken(currentToken);
 
       const storedRepo = localStorage.getItem("ACTIVE_REPO");
       if (storedRepo) {
-        try {
-          const parsed = JSON.parse(storedRepo);
-          setActiveRepo(parsed);
-        } catch {
-          // ignore
-        }
+        setActiveRepo(JSON.parse(storedRepo));
       }
-    };
+    } catch {
+      // ignore
+    }
+  };
 
-    updateToken();
-    window.addEventListener("github-token-updated", updateToken);
-    return () => window.removeEventListener("github-token-updated", updateToken);
+  useEffect(() => {
+    loadSavedData();
+    window.addEventListener("github-token-updated", loadSavedData);
+    return () => window.removeEventListener("github-token-updated", loadSavedData);
   }, []);
 
-  const fetchRepos = async () => {
-    if (!token) {
-      toast.error(`请先填写 ${platform.toUpperCase()} 访问令牌`);
+  const saveAuthSite = (platformToSave: GitPlatform, tokenToSave: string, aliasToSave?: string) => {
+    if (!tokenToSave.trim()) return;
+
+    const newSite: SavedAuthSite = {
+      id: `${platformToSave}-${Date.now()}`,
+      platform: platformToSave,
+      token: tokenToSave.trim(),
+      alias: aliasToSave?.trim() || `${platformToSave.toUpperCase()} 账户 (${tokenToSave.trim().slice(0, 4)}***)`,
+      savedAt: new Date().toLocaleDateString(),
+    };
+
+    const filtered = savedSites.filter((s) => !(s.platform === platformToSave && s.token === tokenToSave.trim()));
+    const updated = [newSite, ...filtered];
+    setSavedSites(updated);
+    localStorage.setItem(SAVED_SITES_STORAGE_KEY, JSON.stringify(updated));
+
+    // 同步到对应 key
+    const key =
+      platformToSave === "gitee"
+        ? "GITEE_ACCESS_TOKEN"
+        : platformToSave === "gitlab"
+        ? "GITLAB_ACCESS_TOKEN"
+        : "GITHUB_ACCESS_TOKEN";
+    localStorage.setItem(key, tokenToSave.trim());
+    localStorage.setItem("ACTIVE_REPO_PLATFORM", platformToSave);
+    toast.success(`已保存 ${platformToSave.toUpperCase()} 授权站点凭据`);
+  };
+
+  const deleteSavedSite = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const target = savedSites.find((s) => s.id === id);
+    const updated = savedSites.filter((s) => s.id !== id);
+    setSavedSites(updated);
+    localStorage.setItem(SAVED_SITES_STORAGE_KEY, JSON.stringify(updated));
+
+    if (target && target.platform === platform) {
+      setToken("");
+      const key =
+        target.platform === "gitee"
+          ? "GITEE_ACCESS_TOKEN"
+          : target.platform === "gitlab"
+          ? "GITLAB_ACCESS_TOKEN"
+          : "GITHUB_ACCESS_TOKEN";
+      localStorage.removeItem(key);
+      setRepos([]);
+    }
+    toast.info("已删除该授权站点");
+  };
+
+  const useSavedSite = (site: SavedAuthSite) => {
+    setPlatform(site.platform);
+    setToken(site.token);
+    localStorage.setItem("ACTIVE_REPO_PLATFORM", site.platform);
+    const key =
+      site.platform === "gitee"
+        ? "GITEE_ACCESS_TOKEN"
+        : site.platform === "gitlab"
+        ? "GITLAB_ACCESS_TOKEN"
+        : "GITHUB_ACCESS_TOKEN";
+    localStorage.setItem(key, site.token);
+    toast.success(`已切换到已授权站点：${site.alias}`);
+    fetchRepos(site.platform, site.token);
+  };
+
+  const fetchRepos = async (targetPlatform = platform, targetToken = token) => {
+    if (!targetToken) {
+      toast.error(`请先填写或选择 ${targetPlatform.toUpperCase()} 授权令牌`);
       return;
     }
     setLoading(true);
@@ -100,17 +185,17 @@ export default function RepoHeaderBar({
       let endpoint = "https://api.github.com/user/repos?sort=updated&per_page=50";
       let headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
 
-      if (platform === "github") {
-        headers["Authorization"] = `token ${token}`;
-      } else if (platform === "gitee") {
-        endpoint = `https://gitee.com/api/v5/user/repos?access_token=${token}&sort=updated&per_page=50`;
-      } else if (platform === "gitlab") {
+      if (targetPlatform === "github") {
+        headers["Authorization"] = `token ${targetToken}`;
+      } else if (targetPlatform === "gitee") {
+        endpoint = `https://gitee.com/api/v5/user/repos?access_token=${targetToken}&sort=updated&per_page=50`;
+      } else if (targetPlatform === "gitlab") {
         endpoint = "https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=50";
-        headers["PRIVATE-TOKEN"] = token;
+        headers["PRIVATE-TOKEN"] = targetToken;
       }
 
       const res = await fetch(endpoint, { headers });
-      if (!res.ok) throw new Error(`${platform.toUpperCase()} API 响应错误 (${res.status})`);
+      if (!res.ok) throw new Error(`${targetPlatform.toUpperCase()} API 响应错误 (${res.status})，请检查 Token 权限`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setRepos(data);
@@ -353,7 +438,7 @@ export default function RepoHeaderBar({
             }}
           >
             <GitFork className="size-3.5" />
-            {activeRepo ? "选择不同仓库" : "连接仓库"}
+            {activeRepo ? "切换仓库" : "连接仓库"}
           </Button>
 
           {activeRepo && (
@@ -392,9 +477,53 @@ export default function RepoHeaderBar({
               连接代码仓库 (GitHub / Gitee / GitLab)
             </DialogTitle>
             <DialogDescription>
-              选择平台、授权连接后自由选择仓库进行对话，随时切换分支与载入代码。
+              授权连接后自由选择仓库进行对话，可保存与删除已授权的站点。
             </DialogDescription>
           </DialogHeader>
+
+          {/* 已保存的授权站点列表（支持保存和删除已授权站点） */}
+          {savedSites.length > 0 && (
+            <div className="space-y-2 border rounded-xl p-3 bg-muted/15">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold flex items-center gap-1 text-foreground">
+                  <ShieldCheck className="size-3.5 text-emerald-500" /> 已授权保存的站点凭据 ({savedSites.length})
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                {savedSites.map((site) => (
+                  <div
+                    key={site.id}
+                    onClick={() => useSavedSite(site)}
+                    className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${
+                      site.platform === platform && site.token === token
+                        ? "bg-primary/10 border-primary font-medium"
+                        : "bg-background hover:bg-accent"
+                    }`}
+                  >
+                    <div className="truncate mr-1">
+                      <div className="flex items-center gap-1">
+                        <span className="uppercase text-[9px] bg-muted px-1 rounded-sm font-mono">
+                          {site.platform}
+                        </span>
+                        <span className="truncate">{site.alias}</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">保存于 {site.savedAt}</span>
+                    </div>
+
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-6 text-muted-foreground hover:text-destructive shrink-0"
+                      title="删除此授权站点"
+                      onClick={(e) => deleteSavedSite(site.id, e)}
+                    >
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 平台切换 */}
           <div className="flex gap-2 border-b pb-2">
@@ -407,12 +536,14 @@ export default function RepoHeaderBar({
                 onClick={() => {
                   setPlatform(p);
                   localStorage.setItem("ACTIVE_REPO_PLATFORM", p);
+                  const matchingSite = savedSites.find((s) => s.platform === p);
                   const stored =
-                    p === "gitee"
+                    matchingSite?.token ||
+                    (p === "gitee"
                       ? localStorage.getItem("GITEE_ACCESS_TOKEN") || ""
                       : p === "gitlab"
                       ? localStorage.getItem("GITLAB_ACCESS_TOKEN") || ""
-                      : localStorage.getItem("GITHUB_ACCESS_TOKEN") || "";
+                      : localStorage.getItem("GITHUB_ACCESS_TOKEN") || "");
                   setToken(stored);
                   setRepos([]);
                 }}
@@ -423,43 +554,46 @@ export default function RepoHeaderBar({
           </div>
 
           <div className="space-y-4 mt-2">
-            {!token ? (
-              <div className="p-4 border rounded-xl bg-muted/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold">请求 {platform.toUpperCase()} 授权</span>
-                  <a
-                    href={AUTH_URLS[platform]}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-                  >
-                    跳转到 {platform.toUpperCase()} 请求授权令牌
-                    <ExternalLink className="size-3" />
-                  </a>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  点击上方链接前往官方生成带有 <code>repo</code> 权限的 Personal Access Token，复制并粘贴在下方：
-                </p>
+            <div className="p-4 border rounded-xl bg-muted/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold">请求 {platform.toUpperCase()} 授权</span>
+                <a
+                  href={AUTH_URLS[platform]}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-primary hover:underline flex items-center gap-1 font-medium bg-primary/10 px-2 py-1 rounded-md"
+                >
+                  前往 {platform.toUpperCase()} 申请授权令牌
+                  <ExternalLink className="size-3" />
+                </a>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                点击上方链接将直接打开 {platform.toUpperCase()} 的 Personal Access Token 生成页，勾选 <code>repo</code> 权限生成后，粘贴在下方：
+              </p>
+              <div className="space-y-2">
+                <Input
+                  placeholder="站点备注名称 (例如: 我的 GitHub 主账号)"
+                  value={siteAlias}
+                  onChange={(e) => setSiteAlias(e.target.value)}
+                  className="text-xs"
+                />
                 <div className="flex gap-2">
                   <Input
                     type="password"
-                    placeholder={`粘贴 ${platform.toUpperCase()} 访问令牌`}
+                    placeholder={`粘贴 ${platform.toUpperCase()} 访问令牌 (PAT)`}
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
+                    className="text-xs"
                   />
                   <Button
                     size="sm"
+                    className="shrink-0"
                     onClick={() => {
                       if (token.trim()) {
-                        const key =
-                          platform === "gitee"
-                            ? "GITEE_ACCESS_TOKEN"
-                            : platform === "gitlab"
-                            ? "GITLAB_ACCESS_TOKEN"
-                            : "GITHUB_ACCESS_TOKEN";
-                        localStorage.setItem(key, token.trim());
-                        toast.success("访问令牌已保存");
-                        fetchRepos();
+                        saveAuthSite(platform, token.trim(), siteAlias);
+                        fetchRepos(platform, token.trim());
+                      } else {
+                        toast.error("请输入访问令牌");
                       }
                     }}
                   >
@@ -467,21 +601,13 @@ export default function RepoHeaderBar({
                   </Button>
                 </div>
               </div>
-            ) : (
+            </div>
+
+            {token && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">已载入 {platform.toUpperCase()} 授权凭据</span>
-                    <a
-                      href={AUTH_URLS[platform]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-primary hover:underline flex items-center gap-0.5"
-                    >
-                      重新授权 <ExternalLink className="size-2.5" />
-                    </a>
-                  </div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={fetchRepos} disabled={loading}>
+                  <span className="text-xs text-muted-foreground">已载入 {platform.toUpperCase()} 授权凭据</span>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => fetchRepos()} disabled={loading}>
                     <RefreshCw className={`size-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> 刷新仓库列表
                   </Button>
                 </div>

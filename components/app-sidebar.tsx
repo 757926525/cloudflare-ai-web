@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Cog, ImageIcon, LogIn, MoreHorizontal, Plus, Shield, MessageSquare, Languages } from "lucide-react";
+import { Cog, ImageIcon, LogIn, MoreHorizontal, Plus, Shield, MessageSquare, Languages, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -40,6 +40,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { db, type Session } from "@/lib/db";
+import { toast } from "sonner";
 
 interface GroupedSessions {
   type: string;
@@ -79,13 +80,13 @@ const AppSidebar = () => {
 
       let groupType: string;
       if (diffDays === 0) {
-        groupType = lang === "zh" ? "今天" : "Today";
+        groupType = lang === "zh" ? "今天 (活跃会话)" : "Today";
       } else if (diffDays <= 7) {
         groupType = lang === "zh" ? "最近 7 天" : "Last 7 Days";
       } else if (diffDays <= 30) {
         groupType = lang === "zh" ? "最近 30 天" : "Last 30 Days";
       } else {
-        groupType = lang === "zh" ? "更早以前" : "Earlier";
+        groupType = lang === "zh" ? "历史会话" : "Earlier";
       }
 
       const group = groups.find((g) => g.type === groupType);
@@ -103,7 +104,19 @@ const AppSidebar = () => {
       await db.message.where("sessionId").equals(sessionId).delete();
     });
     setDeleteConfirmOpen(false);
-    router.push("/");
+    toast.success("会话历史已删除");
+    window.location.hash = "#/c/session-slot-1";
+  };
+
+  const handleCreateNewChat = async () => {
+    const newId = `session-${Date.now()}`;
+    await db.session.add({
+      id: newId,
+      name: `新会话 ${(sessions?.length ?? 0) + 1}`,
+      updatedAt: new Date(),
+    });
+    window.location.hash = `#/c/${newId}`;
+    toast.success("已创建新会话");
   };
 
   const toggleLanguage = () => {
@@ -113,8 +126,20 @@ const AppSidebar = () => {
   return (
     <>
       <Sidebar>
-        <SidebarHeader className="border-b border-sidebar-border">
-          <SidebarMenu>
+        <SidebarHeader className="border-b border-sidebar-border p-3">
+          <div className="flex items-center justify-between gap-1">
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full text-xs font-semibold flex items-center justify-center gap-1.5 h-8.5 rounded-lg shadow-xs"
+              onClick={handleCreateNewChat}
+            >
+              <Plus className="size-4" />
+              {t("newChat")}
+            </Button>
+          </div>
+
+          <SidebarMenu className="mt-2">
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname === "/image"}>
                 <Link href="/image" className="font-medium text-xs">
@@ -146,6 +171,8 @@ const AppSidebar = () => {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
+
+        {/* 侧边栏历史会话列表 (支持多会话切换与删除) */}
         <SidebarContent className="scrollbar">
           {groupedSessions.map(({ type, sessions }) => (
             <SidebarGroup key={type}>
@@ -155,32 +182,31 @@ const AppSidebar = () => {
                   {sessions.map(({ id, name }) => (
                     <SidebarMenuItem key={id}>
                       <SidebarMenuButton asChild isActive={session_id === id}>
-                        <a href={`/#/c/${id}`} className="text-xs">
-                          <MessageSquare className="size-3.5 opacity-70" />
-                          <span className="truncate">{name}</span>
+                        <a href={`/#/c/${id}`} className="text-xs flex items-center gap-2 group">
+                          <MessageSquare className="size-3.5 opacity-70 shrink-0" />
+                          <span className="truncate flex-1">{name}</span>
                           <LoadingIndicator className="ml-auto" />
                         </a>
                       </SidebarMenuButton>
 
-                      {session_id === id && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <SidebarMenuAction>
-                              <MoreHorizontal />
-                            </SidebarMenuAction>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent side="right" align="start">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setDeleteConfirmOpen(true);
-                                setSessionId(id);
-                              }}
-                            >
-                              <span className="text-destructive">{t("deleteChat")}</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <SidebarMenuAction>
+                            <MoreHorizontal className="size-3.5" />
+                          </SidebarMenuAction>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start">
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setDeleteConfirmOpen(true);
+                              setSessionId(id);
+                            }}
+                          >
+                            <Trash2 className="size-3.5 mr-1 text-destructive" />
+                            <span className="text-destructive">{t("deleteChat")}</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
@@ -188,9 +214,10 @@ const AppSidebar = () => {
             </SidebarGroup>
           ))}
         </SidebarContent>
+
         <SidebarFooter className="border-t border-sidebar-border">
           <SidebarMenu>
-            <SidebarMenuItem className="flex items-center gap-1">
+            <SidebarMenuItem className="flex items-center gap-1 justify-between">
               {/* 中英文切换按钮 */}
               <Button
                 size="icon"
@@ -239,13 +266,6 @@ const AppSidebar = () => {
               >
                 <Cog className="size-4" />
               </Button>
-
-              <Link href="/" className="ml-auto">
-                <Button variant="ghost" size="sm" className="h-8 text-xs font-medium">
-                  {t("newChat")}
-                  <Plus className="size-3.5 ml-1" />
-                </Button>
-              </Link>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
