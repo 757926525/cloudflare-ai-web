@@ -29,6 +29,8 @@ export const getStoredModel = (key: StoredModelKey = "CF_AI_MODEL"): Model => {
           logo: null,
           type: custom.type,
           provider: "custom",
+          isFree: custom.isFree ?? false,
+          pricingLabel: custom.pricingLabel || (custom.isFree ? "免费" : "收费"),
           baseUrl: custom.baseUrl,
           apiKey: custom.apiKey,
         };

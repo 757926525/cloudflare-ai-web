@@ -9,6 +9,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { I18nProvider } from "@/lib/i18n";
+import { ThemeCustomProvider } from "@/lib/theme-custom";
 
 export const metadata: Metadata = {
   title: "Cloudflare AI Web",
@@ -25,19 +26,21 @@ export default function RootLayout({
       <body className="scrollbar-thumb-border scrollbar-track-transparent">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <I18nProvider>
-            <Toaster position="top-center" richColors />
+            <ThemeCustomProvider>
+              <Toaster position="top-center" richColors />
 
-            <SidebarProvider>
-              <AppSidebar />
+              <SidebarProvider>
+                <AppSidebar />
 
-              <SidebarInset>
-                <header className="h-16 flex items-center px-4 absolute">
-                  <SidebarTrigger className="-ml-1 z-10" />
-                </header>
+                <SidebarInset>
+                  <header className="h-14 flex items-center px-4 absolute w-full justify-between z-20 pointer-events-none">
+                    <SidebarTrigger className="-ml-1 pointer-events-auto" />
+                  </header>
 
-                {children}
-              </SidebarInset>
-            </SidebarProvider>
+                  {children}
+                </SidebarInset>
+              </SidebarProvider>
+            </ThemeCustomProvider>
           </I18nProvider>
         </ThemeProvider>
       </body>

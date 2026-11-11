@@ -28,14 +28,14 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import type { Model } from "@/lib/models";
 import { getStoredModelId, type StoredModelKey } from "@/lib/utils";
 
-// 按分类排序，Cloudflare Workers AI 排在最首位
+// 按分类排序，Cloudflare Workers AI 严格排在首位
 const getGroupedModels = (models: Model[]) => {
   const groups: { heading: string; models: Model[] }[] = [
     { heading: "Cloudflare Workers AI (首选推荐)", models: [] },
-    { heading: "Groq 极速推理 (免费)", models: [] },
-    { heading: "DeepSeek 官方大模型", models: [] },
-    { heading: "Google Gemini", models: [] },
-    { heading: "本地离线模型 (Ollama)", models: [] },
+    { heading: "Groq 极速推理平台 (免费配额)", models: [] },
+    { heading: "DeepSeek 官方 API", models: [] },
+    { heading: "Google Gemini (提供免费额度)", models: [] },
+    { heading: "本地离线模型 (Ollama 完全免费)", models: [] },
     { heading: "自定义 API 模型", models: [] },
   ];
 
@@ -80,29 +80,47 @@ const ModelList = ({
               <CommandItem
                 key={model.id}
                 value={`${model.name} ${model.id}`}
-                className="py-2.5 px-3 cursor-pointer flex items-center gap-2 rounded-lg aria-selected:bg-primary/10"
+                className="py-2 px-2.5 cursor-pointer flex items-center justify-between rounded-lg aria-selected:bg-primary/10 gap-2"
                 onSelect={() => {
                   setSelectedModel(model);
                   setOpen(false);
                 }}
               >
-                <div className="size-4 shrink-0 flex items-center justify-center">
-                  {model.logo}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="size-4 shrink-0 flex items-center justify-center">
+                    {model.logo}
+                  </div>
+                  <div className="flex flex-col truncate">
+                    <span className="text-xs font-medium text-foreground truncate">
+                      {model.name}
+                    </span>
+                    {model.description && (
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {model.description}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-medium text-foreground truncate">
-                    {model.name}
-                  </span>
-                </div>
-                {model.tag?.map((item) => (
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* 显眼免费/收费标签 */}
                   <Badge
-                    key={item}
-                    variant={item.includes("免") ? "default" : "secondary"}
-                    className="ml-auto text-[10px] px-1.5 py-0 h-4"
+                    variant={model.isFree ? "default" : "secondary"}
+                    className={`text-[10px] px-1.5 py-0 h-4 font-normal ${
+                      model.isFree
+                        ? "bg-emerald-600/90 hover:bg-emerald-600 text-white"
+                        : "bg-amber-500/10 text-amber-600 border border-amber-300 dark:border-amber-700"
+                    }`}
                   >
-                    {item}
+                    {model.pricingLabel || (model.isFree ? "免费" : "收费")}
                   </Badge>
-                ))}
+
+                  {model.tag?.[0] && (
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 hidden sm:inline-flex">
+                      {model.tag[0]}
+                    </Badge>
+                  )}
+                </div>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -137,6 +155,8 @@ function ComboBoxResponsive({
         logo: <Box className="size-4" />,
         type: api.type,
         provider: "custom" as const,
+        isFree: api.isFree ?? false,
+        pricingLabel: (api.pricingLabel as any) || (api.isFree ? "免费" : "收费"),
         tag: ["自定义"],
         baseUrl: api.baseUrl,
         apiKey: api.apiKey,
@@ -167,7 +187,7 @@ function ComboBoxResponsive({
     }
   }, [selectedModel, modalKey]);
 
-  // 状态指示灯颜色：Cloudflare Workers AI 或免配置模型默认绿灯，其他依配置而定
+  // 连通可用指示灯 (绿色 = 可用，黄色 = 待配置密钥)
   const isReady =
     selectedModel?.freeWithoutKey ||
     (selectedModel?.provider === "workers-ai") ||
@@ -178,9 +198,21 @@ function ComboBoxResponsive({
     (selectedModel?.provider === "custom");
 
   const statusLight = isReady ? (
-    <span className="size-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-400" title="连通可用" />
+    <span className="size-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-400 shrink-0" title="连通就绪" />
   ) : (
-    <span className="size-2 rounded-full bg-amber-500 animate-pulse" title="需配置API密钥" />
+    <span className="size-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="请配置API密钥" />
+  );
+
+  const priceBadge = selectedModel && (
+    <span
+      className={`text-[9px] px-1 rounded-sm ml-1 ${
+        selectedModel.isFree
+          ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+          : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+      }`}
+    >
+      {selectedModel.pricingLabel || (selectedModel.isFree ? "免费" : "收费")}
+    </span>
   );
 
   if (isDesktop) {
@@ -193,14 +225,15 @@ function ComboBoxResponsive({
               <span className="size-4 flex items-center justify-center shrink-0">
                 {selectedModel.logo}
               </span>
-              <span className="max-w-[140px] truncate text-xs font-medium">
+              <span className="max-w-[130px] truncate text-xs font-medium">
                 {selectedModel.name}
               </span>
+              {priceBadge}
               <ChevronDown className="size-3.5 opacity-60 ml-0.5" />
             </Button>
           )}
         </PopoverTrigger>
-        <PopoverContent className="p-0 w-80 rounded-xl" align="start">
+        <PopoverContent className="p-0 w-88 rounded-xl" align="start">
           <ModelList
             setOpen={setOpen}
             setSelectedModel={setSelectedModel}
@@ -220,15 +253,16 @@ function ComboBoxResponsive({
             <span className="size-4 flex items-center justify-center shrink-0">
               {selectedModel.logo}
             </span>
-            <span className="max-w-[120px] truncate text-xs font-medium">
+            <span className="max-w-[110px] truncate text-xs font-medium">
               {selectedModel.name}
             </span>
+            {priceBadge}
             <ChevronDown className="size-3.5 opacity-60 ml-0.5" />
           </Button>
         )}
       </DrawerTrigger>
       <DrawerContent className="p-4 pb-8 max-h-[85vh]">
-        <DrawerTitle className="text-base font-semibold mb-2">选择 AI 模型</DrawerTitle>
+        <DrawerTitle className="text-base font-semibold mb-2">选择 AI 模型 (标明免费/收费)</DrawerTitle>
         <div className="mt-2">
           <ModelList
             setOpen={setOpen}
