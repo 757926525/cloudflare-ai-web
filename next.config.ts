@@ -1,10 +1,16 @@
 import type { NextConfig } from "next";
 
+const isPagesBuild = process.env.PAGES_BUILD === "true" || process.env.CF_PAGES === "1";
+
 const nextConfig: NextConfig = {
-  output: "export",
-  images: {
-    unoptimized: true,
-  },
+  ...(isPagesBuild
+    ? {
+        output: "export",
+        images: { unoptimized: true },
+      }
+    : {
+        output: "standalone",
+      }),
   reactCompiler: true,
 };
 

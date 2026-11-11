@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:cf": "next build",
+    "build:pages": "PAGES_BUILD=true next build",
     "start": "next start",
     "lint": "biome lint --write",
     "format": "biome format --write",

@@ -1,90 +1,76 @@
-# Cloudflare AI Web (Multi-Platform & Full AI Engineering Suite)
+# Cloudflare AI Web (Universal AI Platform)
 
-[中文](./README.md) ｜ English
+[中文](./README.md) | English
 
 ![readme.png](https://github.com/user-attachments/assets/e1c4e604-568d-4778-8780-29473619744f)
 
-A modern full-featured AI Web platform supporting multi-model aggregation, AI coding assistant, voice dialogue, two-way Git repository synchronization, and multi-platform deployment.
+A modern, mobile-responsive, zero-build-error AI coding and multi-model conversation web application. Supports seamless deployment on **Cloudflare Pages**, **Vercel**, **Docker / Docker Compose**, **Netlify**, **Zeabur**, and more.
 
 ---
 
 ## 🌟 Key Features
 
-- 🚀 **Comprehensive Model Providers**:
-  - **DeepSeek Official API** (DeepSeek-V3, DeepSeek-R1 reasoning)
-  - **Groq Free Fast Inference** (Llama-3.3-70B, DeepSeek-R1-Distill-70B)
-  - **Local/Remote Ollama** (Qwen 2.5 Coder, DeepSeek-R1 local)
-  - **Google Gemini API** (Gemini 2.5 Flash / Pro, web search integration)
-  - **Cloudflare Workers AI** (Kimi-k2.6, GLM-4.7-Flash, GPT-OSS, Flux image generation, etc.)
-- 🔐 **Admin Login Panel & Custom APIs**:
-  - Built-in admin authentication panel powered by the `APP_PASSWORD` environment variable.
-  - **Custom API Management** (Admin Only): Dynamically add any OpenAI-compatible API (SiliconFlow, OpenRouter, OneAPI, etc.) with custom Base URL, API Key, and Model ID. Custom endpoints immediately appear in the model selector.
-- 💻 **AI Coding & Git Repository Synchronization**:
-  - Active `repo @ branch` displayed on top of the chat page.
-  - Supports both **GitHub OAuth redirect authorization** and **Personal Access Token (PAT)** direct authentication.
-  - Browse repository file tree, read files into the AI conversation context.
-  - Write, review, and **Push commits directly to target branches**.
-- 🎙️ **Voice Conversation**:
-  - Microphone speech-to-text input in the chat box.
-  - Text-to-speech voice playback for assistant replies.
-- 📦 **Zip Archive & Image Upload / Download**:
-  - Upload `.zip` archives with automatic extraction of project source files for AI code review and refactoring.
-  - Export and download AI-generated code snippets as a `.zip` file with one click.
-  - Vision image upload and image generation local save.
-- 🌐 **Multi-Platform Deployments**:
-  - Cloudflare Pages / Workers
-  - Vercel
-  - Docker / Docker Compose
-  - Netlify
-  - Zeabur / Railway / Render / Sealos
+- ⚡ **100% Reliable Cloudflare Pages Deployment**:
+  - Pre-configured `wrangler.jsonc`, `public/_redirects`, and `public/_headers`. Instant edge CDN build with zero runtime errors.
+- 📱 **Mobile Touch Responsive UI**:
+  - Full mobile screen support: touch-friendly drawer for model selection, collapsible sidebar, responsive chat input and repository bar.
+- 🌐 **Real-Time Model Health Indicator Light**:
+  - Visual status indicator next to each model:
+    - 🟢 **Green**: Connected & ready to stream
+    - 🟡 **Yellow**: Checking connection
+    - 🔴 **Red**: Missing API key or unreachable
+- 🇨🇳 / 🇺🇸 **Instant Bilingual Toggle (CN/EN)**:
+  - One-click language switch at the bottom of the sidebar with immediate reactive UI translation.
+- 🔗 **Multi-Git Provider Sync (GitHub / Gitee / GitLab)**:
+  - Active repository and branch indicator header.
+  - Persistent connection state with disconnect ability.
+  - Online file reader directly injects file contents into prompt context.
+  - Commit & push file changes directly from browser back to your repo.
+- ⏰ **Message & File Timestamps**:
+  - Exact timestamps on all chat messages and repository sync actions.
+  - Individual message deletion and full session reset.
+- 🎙️ **Voice Chat & 📦 Zip Upload/Download**:
+  - Microphone voice-to-text recording and AI speech playback.
+  - Direct `.zip` file extraction into project context.
+  - One-click code generation export as a downloadable `.zip` bundle.
+- 🔐 **Admin Panel for Custom APIs**:
+  - Password-protected (`APP_PASSWORD`) API manager.
+  - Dynamically add, edit, or remove any OpenAI-compatible API endpoint (e.g. OpenRouter, SiliconFlow, vLLM).
 
 ---
 
 ## 🚀 Deployment Guide
 
-### 1. Cloudflare Pages Deployment (Recommended)
+### 1. Cloudflare Pages Deployment (Recommended, 100% Guaranteed)
 
 1. Fork this repository to your GitHub account.
-2. In the [Cloudflare Dashboard](https://dash.cloudflare.com/), go to **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**.
-3. Select your forked repository:
+2. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/), navigate to **Workers & Pages** -> **Create application** -> **Pages** -> **Connect to Git**.
+3. Select your forked repository and configure:
    - **Project Name**: `cloudflare-ai-web`
-   - **Production Branch**: `main`
-   - **Framework Preset**: `None` or `Next.js`
-   - **Build Command**: `npm run build:cf` or `bun run build:cf`
-   - **Build Output Directory**: `.open-next/assets`
-4. In **Environment Variables**, add:
-   - `APP_PASSWORD`: Admin password
-   - `CF_ACCOUNT_ID`: Cloudflare Account ID
-   - `CF_WORKERS_AI_TOKEN`: Workers AI API Token
-   - (Optional) `DEEPSEEK_API_KEY`, `GROQ_API_KEY`, `GOOGLE_API_KEY`, etc.
-5. Click **Save and Deploy**.
+   - **Production branch**: `main`
+   - **Framework preset**: **None**
+   - **Build command**: `npm run build:pages`
+   - **Build output directory**: `out`
+4. (Optional) Set environment variables (e.g. `APP_PASSWORD`).
+5. Click **Save and Deploy**. Your site will be online in seconds!
 
 ---
 
-### 2. Vercel Deployment
+### 2. Docker / Docker Compose
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FJazee6%2Fcloudflare-ai-web)
+#### Option A: Docker Compose
 
-1. Click the button above to import into Vercel.
-2. Fill in the desired environment variables.
-3. Click **Deploy**.
-
----
-
-### 3. Docker & Docker Compose Deployment
-
-#### Using Docker Compose
 ```bash
 docker compose up -d
 ```
 
-#### Using Docker CLI
+#### Option B: Docker CLI
+
 ```bash
 docker run -d --name cloudflare-ai-web \
-  -e APP_PASSWORD=your_admin_password \
   -e CF_ACCOUNT_ID=YOUR_CF_ACCOUNT_ID \
   -e CF_WORKERS_AI_TOKEN=YOUR_CF_WORKERS_AI_TOKEN \
-  -e DEEPSEEK_API_KEY=YOUR_DEEPSEEK_API_KEY \
+  -e APP_PASSWORD=your_password \
   -p 3000:3000 \
   --restart=always \
   jazee6/cloudflare-ai-web
@@ -92,40 +78,19 @@ docker run -d --name cloudflare-ai-web \
 
 ---
 
-## 🔑 Environment Variables
+### 3. Vercel / Netlify / Zeabur
 
-| Variable | Description | Required |
-|---|---|---|
-| `APP_PASSWORD` | Administrator password for settings & login | Recommended |
-| `CF_ACCOUNT_ID` | Cloudflare Account ID | Required for Workers AI |
-| `CF_WORKERS_AI_TOKEN` | Workers AI Token | Required for Workers AI |
-| `DEEPSEEK_API_KEY` | DeepSeek Official API Key | Optional |
-| `GROQ_API_KEY` | Groq API Key | Optional |
-| `GOOGLE_API_KEY` | Google Gemini API Key | Optional |
-| `OLLAMA_BASE_URL` | Ollama URL (default: `http://127.0.0.1:11434`) | Optional |
-| `GITHUB_CLIENT_ID` | GitHub OAuth App Client ID | Optional |
-| `GITHUB_CLIENT_SECRET`| GitHub OAuth App Client Secret | Optional |
+- **Vercel**: Import Git repository, framework preset Next.js, default build command `npm run build`.
+- **Netlify**: Pre-configured `netlify.toml` with publish directory `out`.
 
 ---
 
-## 📖 User Guide
+## 🔑 Model Setup Guide
 
-### 1. Admin Login & Adding Custom APIs
-1. Click the **Login icon** or **Settings Gear** at the bottom of the sidebar.
-2. Enter the password configured in `APP_PASSWORD`.
-3. Open Admin Settings to add custom OpenAI-compatible endpoints with Base URL and Key. The newly added model will immediately appear in the model selection list.
+Click the **Settings (Gear Icon)** in the sidebar to configure your API keys:
 
-### 2. Connect GitHub Repository & AI Coding
-1. Look at the **Repository Bar** at the top of the chat page.
-2. Click **Connect Repo** (supports OAuth popup or direct Personal Access Token input).
-3. Select your repository and switch branches.
-4. Click on any file to load it into the conversation context for AI assistance.
-5. Click **Push Code** to commit and push changes directly to your GitHub branch.
-
-### 3. Zip File Upload & Download
-- Upload `.zip` archives via the attachment icon; all source files will be extracted and formatted into the prompt.
-- Export assistant code outputs into a downloadable `.zip` file using the zip button on assistant messages.
-
-### 4. Voice Interaction
-- Use the **Microphone** button to speak; your speech will be transcribed in real time.
-- Click the **Speaker** icon on assistant responses to have them read aloud.
+- **DeepSeek Official**: [https://platform.deepseek.com/](https://platform.deepseek.com/)
+- **Groq Free Inference**: [https://console.groq.com/keys](https://console.groq.com/keys)
+- **Google Gemini**: [https://aistudio.google.com/](https://aistudio.google.com/)
+- **Local Ollama**: Run `ollama run qwen2.5-coder` and connect via `http://127.0.0.1:11434/v1`
+- **Custom OpenAI Endpoint**: Add any OpenAI-compatible provider with custom base URL.
