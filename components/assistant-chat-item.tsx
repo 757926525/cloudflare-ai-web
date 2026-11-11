@@ -1,4 +1,4 @@
-import { Archive, Brain, Loader2, Volume2, VolumeX } from "lucide-react";
+import { Archive, Brain, Loader2, Volume2, VolumeX, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { Fragment } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import type { ImagesDataPart, Message } from "@/lib/db";
+import { db, type ImagesDataPart, type Message } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import ToolCall from "@/components/tool-call";
 import type { ChatStatus, ToolUIPart } from "ai";
@@ -23,18 +23,21 @@ import "streamdown/styles.css";
 
 const AssistantChatItem = ({
   className,
+  messageId,
+  createdAt,
   parts,
   status,
   isLastMessage,
 }: {
   className?: string;
+  messageId?: string;
+  createdAt?: Date;
   parts: Message["parts"];
   status: ChatStatus;
   isLastMessage?: boolean;
 }) => {
   const { speak, stopSpeaking, isSpeaking } = useVoiceChat();
 
-  // Parse code blocks in text to allow downloading as .zip
   const textContent = parts
     .filter((p) => p.type === "text")
     .map((p) => (p as any).text || "")
@@ -59,39 +62,68 @@ const AssistantChatItem = ({
     }
 
     if (extractedFiles.length === 0) {
-      // Fallback: download the entire assistant message as text
       extractedFiles.push({ filename: "response.md", content: textContent });
     }
 
     downloadFilesAsZip(extractedFiles, "ai-code-export.zip");
-    toast.success(`Downloaded ${extractedFiles.length} file(s) as zip`);
+    toast.success(`已打包下载 ${extractedFiles.length} 个代码文件`);
   };
 
-  return (
-    <div className={cn("", className)}>
-      <div className="flex items-center gap-1 mb-2 justify-end">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-muted-foreground hover:text-foreground"
-          title={isSpeaking ? "Stop Speaking" : "Read Aloud"}
-          onClick={() => {
-            if (isSpeaking) stopSpeaking();
-            else speak(textContent);
-          }}
-        >
-          {isSpeaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
-        </Button>
+  const handleDeleteMessage = async () => {
+    if (messageId) {
+      try {
+        await db.message.delete(messageId);
+        toast.success("已删除该条回复");
+      } catch {
+        // ignore
+      }
+    }
+  };
 
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7 text-muted-foreground hover:text-foreground"
-          title="Download Code / Output as .zip"
-          onClick={handleDownloadCodeZip}
-        >
-          <Archive className="size-3.5" />
-        </Button>
+  const timeString = createdAt
+    ? new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "";
+
+  return (
+    <div className={cn("group/msg relative", className)}>
+      <div className="flex items-center gap-1.5 mb-1 justify-between text-[11px] text-muted-foreground">
+        <span>{timeString && <span className="font-mono">{timeString}</span>}</span>
+        <div className="flex items-center gap-1 opacity-80 group-hover/msg:opacity-100 transition-opacity">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-6 text-muted-foreground hover:text-foreground"
+            title={isSpeaking ? "停止朗读" : "语音朗读回复"}
+            onClick={() => {
+              if (isSpeaking) stopSpeaking();
+              else speak(textContent);
+            }}
+          >
+            {isSpeaking ? <VolumeX className="size-3" /> : <Volume2 className="size-3" />}
+          </Button>
+
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-6 text-muted-foreground hover:text-foreground"
+            title="打包下载代码 (.zip)"
+            onClick={handleDownloadCodeZip}
+          >
+            <Archive className="size-3" />
+          </Button>
+
+          {messageId && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 text-muted-foreground hover:text-destructive"
+              title="删除此消息"
+              onClick={handleDeleteMessage}
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          )}
+        </div>
       </div>
       {parts.map((part, index) => {
         const key = `${part.type}-${index}`;
@@ -100,7 +132,6 @@ const AssistantChatItem = ({
           return (
             <Streamdown
               key={key}
-              // caret="circle"
               animated={{ animation: "blurIn" }}
               isAnimating={status === "streaming" && isLastMessage}
               plugins={{ cjk, code, math }}
@@ -118,7 +149,7 @@ const AssistantChatItem = ({
                 <AccordionTrigger>
                   <div className="flex items-center">
                     <Brain className="size-4 mr-2" />
-                    Reasoning
+                    深度思考
                     {part.state === "streaming" && (
                       <Loader2 className="size-4 ml-2 animate-spin" />
                     )}

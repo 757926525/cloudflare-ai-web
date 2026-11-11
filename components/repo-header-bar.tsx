@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GitBranch, GitFork, RefreshCw, Upload, Check, FolderGit2, FileText, ChevronRight, Key, ExternalLink } from "lucide-react";
+import { GitBranch, GitFork, RefreshCw, Upload, Check, FolderGit2, FileText, ExternalLink, X, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,6 +19,7 @@ export interface ActiveRepo {
   owner: string;
   name: string;
   branch: string;
+  updatedAt?: string;
 }
 
 export default function RepoHeaderBar({
@@ -55,55 +56,33 @@ export default function RepoHeaderBar({
 
     updateToken();
     window.addEventListener("github-token-updated", updateToken);
-
-    const handleOAuthMessage = (event: MessageEvent) => {
-      if (event.data?.type === "GITHUB_AUTH_SUCCESS" && event.data?.token) {
-        localStorage.setItem("GITHUB_ACCESS_TOKEN", event.data.token);
-        setToken(event.data.token);
-        window.dispatchEvent(new Event("github-token-updated"));
-        toast.success("GitHub OAuth connected successfully!");
-      }
-    };
-    window.addEventListener("message", handleOAuthMessage);
-
-    return () => {
-      window.removeEventListener("github-token-updated", updateToken);
-      window.removeEventListener("message", handleOAuthMessage);
-    };
+    return () => window.removeEventListener("github-token-updated", updateToken);
   }, []);
 
-  const handleOAuthConnect = () => {
-    const width = 600;
-    const height = 700;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-    window.open(
-      "/api/github/oauth",
-      "GitHub OAuth",
-      `width=${width},height=${height},top=${top},left=${left}`
-    );
-  };
-
+  // 直接调用 GitHub 官方 REST API (无需本地后端，支持 CORS)
   const fetchRepos = async () => {
     if (!token) {
-      toast.error("Please connect GitHub first via OAuth or Token.");
+      toast.error("请先在设置中填写 GitHub 个人访问令牌 (PAT)");
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/github/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list_user_repos", token }),
+      const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=30", {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
       });
+      if (!res.ok) {
+        throw new Error(`GitHub API 响应失败 (${res.status})`);
+      }
       const data = await res.json();
       if (Array.isArray(data)) {
         setRepos(data);
-      } else {
-        toast.error(data.error || "Failed to load repos");
+        toast.success(`成功加载 ${data.length} 个代码仓库`);
       }
     } catch (err: any) {
-      toast.error(err.message || "Network error");
+      toast.error(err.message || "拉取仓库列表失败");
     } finally {
       setLoading(false);
     }
@@ -114,22 +93,19 @@ export default function RepoHeaderBar({
       owner: repo.owner.login,
       name: repo.name,
       branch: repo.default_branch || "main",
+      updatedAt: new Date().toLocaleTimeString(),
     };
     setActiveRepo(newRepo);
     localStorage.setItem("ACTIVE_REPO", JSON.stringify(newRepo));
-    toast.success(`Selected repository: ${newRepo.owner}/${newRepo.name}`);
+    toast.success(`已连接仓库: ${newRepo.owner}/${newRepo.name}`);
 
-    // Fetch branches
+    // 拉取分支列表
     try {
-      const bRes = await fetch("/api/github/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "list_branches",
-          token,
-          owner: newRepo.owner,
-          repo: newRepo.name,
-        }),
+      const bRes = await fetch(`https://api.github.com/repos/${newRepo.owner}/${newRepo.name}/branches`, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
       });
       const bData = await bRes.json();
       if (Array.isArray(bData)) setBranches(bData);
@@ -137,30 +113,28 @@ export default function RepoHeaderBar({
       // ignore
     }
 
-    // Fetch tree
+    // 获取文件树
     fetchTree(newRepo);
   };
 
   const fetchTree = async (repoInfo: ActiveRepo) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/github/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "get_tree",
-          token,
-          owner: repoInfo.owner,
-          repo: repoInfo.name,
-          branch: repoInfo.branch,
-        }),
-      });
+      const res = await fetch(
+        `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.name}/git/trees/${repoInfo.branch}?recursive=1`,
+        {
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        }
+      );
       const data = await res.json();
       if (data.tree) {
         setTree(data.tree.filter((i: any) => i.type === "blob"));
       }
-    } catch (err: any) {
-      toast.error("Failed to load repo files");
+    } catch {
+      toast.error("加载仓库文件目录失败");
     } finally {
       setLoading(false);
     }
@@ -172,25 +146,28 @@ export default function RepoHeaderBar({
     setActiveRepo(updated);
     localStorage.setItem("ACTIVE_REPO", JSON.stringify(updated));
     fetchTree(updated);
-    toast.success(`Switched branch to ${branchName}`);
+    toast.success(`已切换分支至 ${branchName}`);
+  };
+
+  const handleDisconnect = () => {
+    setActiveRepo(null);
+    localStorage.removeItem("ACTIVE_REPO");
+    toast.info("已取消连接代码仓库");
   };
 
   const handleReadFile = async (path: string) => {
     if (!activeRepo) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/github/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "read_file",
-          token,
-          owner: activeRepo.owner,
-          repo: activeRepo.name,
-          branch: activeRepo.branch,
-          path,
-        }),
-      });
+      const res = await fetch(
+        `https://api.github.com/repos/${activeRepo.owner}/${activeRepo.name}/contents/${path}?ref=${activeRepo.branch}`,
+        {
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        }
+      );
       const data = await res.json();
       if (data.content) {
         const binary = atob(data.content.replace(/\s/g, ""));
@@ -198,10 +175,10 @@ export default function RepoHeaderBar({
         const decoded = new TextDecoder().decode(bytes);
         onInsertCodeContext?.(path, decoded);
         setDialogOpen(false);
-        toast.success(`Loaded ${path} into editor context`);
+        toast.success(`已载入文件 ${path} 至对话上下文`);
       }
     } catch {
-      toast.error(`Failed to read file ${path}`);
+      toast.error(`读取文件 ${path} 失败`);
     } finally {
       setLoading(false);
     }
@@ -209,38 +186,64 @@ export default function RepoHeaderBar({
 
   const handlePushCommit = async () => {
     if (!activeRepo || !pushPath.trim() || !pushContent) {
-      toast.error("Please provide file path and content to push");
+      toast.error("请填写文件路径和文件内容");
       return;
     }
     setPushing(true);
     try {
-      const res = await fetch("/api/github/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "push_file",
-          token,
-          owner: activeRepo.owner,
-          repo: activeRepo.name,
-          branch: activeRepo.branch,
-          path: pushPath.trim(),
-          content: pushContent,
-          message: commitMsg.trim() || `Update ${pushPath} via Cloudflare AI Web`,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(`Successfully pushed to ${activeRepo.branch}!`);
+      // 检查原文件 SHA（用于更新）
+      let sha: string | undefined ;
+      try {
+        const getRes = await fetch(
+          `https://api.github.com/repos/${activeRepo.owner}/${activeRepo.name}/contents/${pushPath.trim()}?ref=${activeRepo.branch}`,
+          {
+            headers: {
+              Authorization: `token ${token}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          }
+        );
+        if (getRes.ok) {
+          const getData = await getRes.json();
+          sha = getData.sha;
+        }
+      } catch {
+        // file doesn't exist
+      }
+
+      const encodedContent = btoa(unescape(encodeURIComponent(pushContent)));
+      const putRes = await fetch(
+        `https://api.github.com/repos/${activeRepo.owner}/${activeRepo.name}/contents/${pushPath.trim()}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: commitMsg.trim() || `更新 ${pushPath.trim()} (通过 Cloudflare AI Web)`,
+            content: encodedContent,
+            branch: activeRepo.branch,
+            ...(sha ? { sha } : {}),
+          }),
+        }
+      );
+
+      const putData = await putRes.json();
+      if (putRes.ok) {
+        const timeStr = new Date().toLocaleTimeString();
+        toast.success(`推送提交成功！时间：${timeStr}`);
         setPushDialogOpen(false);
         setPushPath("");
         setPushContent("");
         setCommitMsg("");
         fetchTree(activeRepo);
       } else {
-        toast.error(data.message || data.error || "Push failed");
+        toast.error(putData.message || "推送失败，请确认分支与权限");
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to push");
+      toast.error(err.message || "推送异常");
     } finally {
       setPushing(false);
     }
@@ -248,7 +251,7 @@ export default function RepoHeaderBar({
 
   return (
     <>
-      <div className="w-full bg-muted/40 border-b px-4 py-2 flex items-center justify-between text-xs backdrop-blur-xs">
+      <div className="w-full bg-muted/40 border-b border-border/40 px-3 py-1.5 flex items-center justify-between text-xs backdrop-blur-md">
         <div className="flex items-center gap-2 overflow-hidden">
           <FolderGit2 className="size-4 shrink-0 text-primary" />
           {activeRepo ? (
@@ -256,107 +259,139 @@ export default function RepoHeaderBar({
               <span className="font-semibold text-foreground truncate">
                 {activeRepo.owner}/{activeRepo.name}
               </span>
-              <Badge variant="secondary" className="text-[10px] flex items-center gap-1 font-mono">
+              <Badge variant="secondary" className="text-[10px] flex items-center gap-1 font-mono h-4 px-1.5">
                 <GitBranch className="size-3" />
                 {activeRepo.branch}
               </Badge>
+              {activeRepo.updatedAt && (
+                <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                  (同步于 {activeRepo.updatedAt})
+                </span>
+              )}
             </div>
           ) : (
-            <span className="text-muted-foreground">No GitHub repository connected</span>
+            <span className="text-muted-foreground">未连接代码仓库 (只读模式)</span>
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <Button
             size="sm"
             variant="outline"
-            className="h-7 text-xs flex items-center gap-1"
+            className="h-7 text-xs flex items-center gap-1 px-2.5 rounded-lg"
             onClick={() => {
               setDialogOpen(true);
               if (token && repos.length === 0) fetchRepos();
             }}
           >
             <GitFork className="size-3.5" />
-            {activeRepo ? "Change Repo" : "Connect Repo"}
+            {activeRepo ? "切换仓库" : "连接代码仓库"}
           </Button>
 
           {activeRepo && (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs flex items-center gap-1"
-              onClick={() => setPushDialogOpen(true)}
-            >
-              <Upload className="size-3.5" />
-              Push Code
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 text-xs flex items-center gap-1 px-2.5 rounded-lg shadow-xs"
+                onClick={() => setPushDialogOpen(true)}
+              >
+                <Upload className="size-3.5" />
+                推送代码
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-muted-foreground hover:text-destructive px-2"
+                title="取消连接"
+                onClick={handleDisconnect}
+              >
+                <Unlink className="size-3.5" />
+                <span className="hidden sm:inline ml-1">取消连接</span>
+              </Button>
+            </>
           )}
         </div>
       </div>
 
-      {/* Select Repo & Branch Dialog */}
+      {/* 选择仓库与分支对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FolderGit2 className="size-5" />
-              GitHub Repository Connection
+              <FolderGit2 className="size-5 text-primary" />
+              代码仓库连接与浏览
             </DialogTitle>
             <DialogDescription>
-              Connect your GitHub account to read code, browse files, and commit & push branches.
+              在线拉取个人代码仓库、浏览源文件注入 AI 编程上下文，并支持实时提交修改。
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 mt-2">
             {!token ? (
-              <div className="p-4 border rounded-lg bg-muted/30 text-center space-y-3">
+              <div className="p-4 border rounded-xl bg-muted/20 text-center space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  You are not currently authenticated with GitHub. Connect using OAuth or input your Token.
+                  尚未配置 GitHub 访问令牌。请先输入个人访问令牌 (Personal Access Token, repo权限)：
                 </p>
-                <div className="flex justify-center gap-2">
-                  <Button size="sm" onClick={handleOAuthConnect}>
-                    <ExternalLink className="size-3.5 mr-1" /> Connect via OAuth
+                <div className="flex gap-2 max-w-sm mx-auto">
+                  <Input
+                    type="password"
+                    placeholder="ghp_... 访问令牌"
+                    onChange={(e) => setToken(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (token.trim()) {
+                        localStorage.setItem("GITHUB_ACCESS_TOKEN", token.trim());
+                        toast.success("访问令牌已保存");
+                        fetchRepos();
+                      }
+                    }}
+                  >
+                    保存并连接
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Token Authenticated</span>
+                  <span className="text-xs text-muted-foreground">已通过 GitHub 令牌认证</span>
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={fetchRepos} disabled={loading}>
-                    <RefreshCw className={`size-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> Refresh Repos
+                    <RefreshCw className={`size-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> 刷新仓库列表
                   </Button>
                 </div>
 
-                {/* Repos list */}
-                <div className="border rounded-md max-h-48 overflow-y-auto p-1 space-y-1">
+                {/* 仓库列表 */}
+                <div className="border rounded-xl max-h-48 overflow-y-auto p-1.5 space-y-1">
                   {repos.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-muted-foreground">
-                      {loading ? "Loading repositories..." : "Click Refresh to load your repositories"}
+                    <div className="p-4 text-center text-xs text-muted-foreground">
+                      {loading ? "正在从 GitHub 获取仓库..." : "点击「刷新仓库列表」加载您的项目"}
                     </div>
                   ) : (
                     repos.map((repo) => (
                       <div
                         key={repo.id}
                         onClick={() => selectRepo(repo)}
-                        className={`p-2 rounded cursor-pointer text-xs flex items-center justify-between hover:bg-accent transition-colors ${
+                        className={`p-2 rounded-lg cursor-pointer text-xs flex items-center justify-between hover:bg-accent transition-colors ${
                           activeRepo?.name === repo.name ? "bg-accent font-semibold" : ""
                         }`}
                       >
-                        <span>{repo.full_name}</span>
+                        <span className="truncate">{repo.full_name}</span>
                         {activeRepo?.name === repo.name && <Check className="size-3.5 text-primary" />}
                       </div>
                     ))
                   )}
                 </div>
 
-                {/* Active Repo Branches & Files */}
+                {/* 当前仓库分支与文件 */}
                 {activeRepo && (
                   <div className="space-y-3 border-t pt-3">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs">Current Branch</Label>
+                      <Label className="text-xs font-semibold">当前分支</Label>
                       <select
-                        className="text-xs border rounded px-2 py-1 bg-background"
+                        className="text-xs border rounded-lg px-2 py-1 bg-background"
                         value={activeRepo.branch}
                         onChange={(e) => changeBranch(e.target.value)}
                       >
@@ -369,20 +404,20 @@ export default function RepoHeaderBar({
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-xs">Repository Files ({tree.length})</Label>
-                      <div className="border rounded-md max-h-40 overflow-y-auto p-1 text-xs space-y-0.5">
+                      <Label className="text-xs font-semibold">项目源文件 ({tree.length})</Label>
+                      <div className="border rounded-xl max-h-40 overflow-y-auto p-1.5 text-xs space-y-0.5">
                         {tree.slice(0, 50).map((file) => (
                           <div
                             key={file.path}
                             onClick={() => handleReadFile(file.path)}
-                            className="p-1.5 hover:bg-accent rounded cursor-pointer flex items-center justify-between group"
+                            className="p-1.5 hover:bg-accent rounded-md cursor-pointer flex items-center justify-between group"
                           >
                             <span className="truncate flex items-center gap-1.5">
                               <FileText className="size-3 text-muted-foreground" />
                               {file.path}
                             </span>
                             <span className="text-[10px] text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                              Load into chat
+                              插入对话
                             </span>
                           </div>
                         ))}
@@ -396,45 +431,45 @@ export default function RepoHeaderBar({
         </DialogContent>
       </Dialog>
 
-      {/* Push Code Dialog */}
+      {/* 推送代码对话框 */}
       <Dialog open={pushDialogOpen} onOpenChange={setPushDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Push Code to {activeRepo?.owner}/{activeRepo?.name}</DialogTitle>
+            <DialogTitle>推送代码到 {activeRepo?.owner}/{activeRepo?.name}</DialogTitle>
             <DialogDescription>
-              Commit and push modified file directly to branch <code>{activeRepo?.branch}</code>.
+              直接将编写好的代码提交并推送到分支 <code>{activeRepo?.branch}</code>。
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 mt-2">
             <div className="space-y-1">
-              <Label className="text-xs">File Path</Label>
+              <Label className="text-xs">文件路径</Label>
               <Input
-                placeholder="e.g. src/index.ts or README.md"
+                placeholder="例如: src/index.ts 或 README.md"
                 value={pushPath}
                 onChange={(e) => setPushPath(e.target.value)}
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Commit Message</Label>
+              <Label className="text-xs">提交信息 (Commit Message)</Label>
               <Input
-                placeholder="e.g. update code via Cloudflare AI Web"
+                placeholder="例如: feat: 更新代码并修复问题"
                 value={commitMsg}
                 onChange={(e) => setCommitMsg(e.target.value)}
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">File Content</Label>
+              <Label className="text-xs">代码内容</Label>
               <textarea
-                className="w-full h-40 p-2 font-mono text-xs border rounded bg-background resize-none focus:outline-hidden"
-                placeholder="Paste code or text to commit..."
+                className="w-full h-40 p-2.5 font-mono text-xs border rounded-xl bg-background resize-none focus:outline-hidden"
+                placeholder="粘贴需提交的代码文本..."
                 value={pushContent}
                 onChange={(e) => setPushContent(e.target.value)}
               />
             </div>
 
             <Button className="w-full" onClick={handlePushCommit} disabled={pushing}>
-              {pushing ? "Pushing to GitHub..." : "Confirm & Push Commit"}
+              {pushing ? "正在提交并推送到 GitHub..." : "确认并推送提交"}
             </Button>
           </div>
         </DialogContent>

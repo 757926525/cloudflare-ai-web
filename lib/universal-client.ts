@@ -17,72 +17,157 @@ export async function* streamChatUniversal({
   config: UniversalModelConfig;
   onReasoning?: (chunk: string) => void;
 }): AsyncGenerator<string, void, unknown> {
-  let endpoint = "";
-  let headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  let body: any = {};
+  const appPassword = localStorage.getItem("CF_AI_PASSWORD") || "";
+  const cfAccountId = config.cfAccountId || localStorage.getItem("CF_ACCOUNT_ID") || "";
+  const cfToken = config.apiKey || localStorage.getItem("CF_WORKERS_AI_TOKEN") || "";
 
+  // 1. Google Gemini 官方支持客户端跨域
   if (config.provider === "google") {
     const key = config.apiKey || localStorage.getItem("GOOGLE_API_KEY") || "";
-    endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${key}`;
+    if (!key) {
+      throw new Error("请先在设置中填写 Google Gemini API Key");
+    }
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${key}`;
     const contents = messages.map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     }));
-    body = { contents };
-  } else if (config.provider === "workers-ai") {
-    // Cloudflare Workers AI OpenAI-compatible endpoint
-    const accountId = config.cfAccountId || localStorage.getItem("CF_ACCOUNT_ID") || "";
-    const token = config.apiKey || localStorage.getItem("CF_WORKERS_AI_TOKEN") || "";
-    endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
-    headers["Authorization"] = `Bearer ${token}`;
-    body = {
-      model,
-      messages,
-      stream: true,
-    };
-  } else {
-    // OpenAI Compatible (DeepSeek, Groq, Ollama, Custom)
-    let baseUrl = config.baseUrl;
-    let apiKey = config.apiKey || "";
 
-    if (config.provider === "deepseek") {
-      baseUrl = baseUrl || "https://api.deepseek.com/v1";
-      apiKey = apiKey || localStorage.getItem("DEEPSEEK_API_KEY") || "";
-    } else if (config.provider === "groq") {
-      baseUrl = baseUrl || "https://api.groq.com/openai/v1";
-      apiKey = apiKey || localStorage.getItem("GROQ_API_KEY") || "";
-    } else if (config.provider === "ollama") {
-      baseUrl = baseUrl || localStorage.getItem("OLLAMA_BASE_URL") || "http://127.0.0.1:11434/v1";
-      apiKey = "ollama";
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Google API 请求失败 (${response.status}): ${err.slice(0, 200)}`);
     }
 
-    const resolvedUrl = (baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
-    endpoint = `${resolvedUrl}/chat/completions`;
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data: ")) {
+          try {
+            const json = JSON.parse(trimmed.slice(6));
+            const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) yield text;
+          } catch {
+            // ignore
+          }
+        }
+      }
     }
-    body = {
-      model,
-      messages,
-      stream: true,
-    };
+    return;
   }
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  // 2. 本地 Ollama 模式 (用户机器本地直接跨域)
+  if (config.provider === "ollama") {
+    const baseUrl = (config.baseUrl || localStorage.getItem("OLLAMA_BASE_URL") || "http://127.0.0.1:11434/v1").replace(/\/$/, "");
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, stream: true }),
+    });
+    if (!response.ok) {
+      throw new Error(`本地 Ollama 响应错误 (${response.status})，请确认 Ollama 已启动`);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
+          try {
+            const json = JSON.parse(trimmed.slice(6));
+            const text = json.choices?.[0]?.delta?.content;
+            if (text) yield text;
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // 3. 通用转发：优先尝试 Cloudflare Pages 边缘函数 (/api/chat)
+  let response: Response;
+  try {
+    response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(appPassword ? { "X-App-Password": appPassword } : {}),
+        ...(cfAccountId ? { "X-CF-Account": cfAccountId } : {}),
+        ...(cfToken ? { "X-CF-Token": cfToken } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        provider: config.provider,
+        baseUrl: config.baseUrl,
+        apiKey:
+          config.apiKey ||
+          (config.provider === "deepseek" ? localStorage.getItem("DEEPSEEK_API_KEY") : "") ||
+          (config.provider === "groq" ? localStorage.getItem("GROQ_API_KEY") : "") ||
+          "",
+        stream: true,
+      }),
+    });
+  } catch {
+    // 纯静态环境且无边缘函数时直接直连端点
+    let targetUrl = (config.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "") + "/chat/completions";
+    let authHeader = "";
+
+    if (config.provider === "deepseek") {
+      targetUrl = "https://api.deepseek.com/v1/chat/completions";
+      authHeader = `Bearer ${localStorage.getItem("DEEPSEEK_API_KEY") || ""}`;
+    }
+
+    response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authHeader ? { Authorization: authHeader } : {}),
+      },
+      body: JSON.stringify({ model, messages, stream: true }),
+    });
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API Error (${response.status}): ${errorText.slice(0, 300)}`);
+    let errMessage = "";
+    try {
+      const errJson = await response.json();
+      errMessage = errJson.error || errJson.message || "";
+    } catch {
+      errMessage = await response.text();
+    }
+    throw new Error(errMessage || `模型调用异常 (${response.status})，请在设置中检查配置`);
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new Error("Stream not readable");
+  if (!reader) throw new Error("无法读取流式响应");
 
   const decoder = new TextDecoder();
   let buffer = "";
@@ -109,8 +194,9 @@ export async function* streamChatUniversal({
           if (delta?.content) {
             yield delta.content;
           }
-          if (json.candidates?.[0]?.content?.parts?.[0]?.text) {
-            yield json.candidates[0].content.parts[0].text;
+          if (json.response) {
+            // Cloudflare Workers AI stream format
+            yield json.response;
           }
         } catch {
           // ignore chunk parse

@@ -9,12 +9,13 @@ import ChatInput, { type onSendMessageProps } from "@/components/chat-input";
 import ChatList from "@/components/chat-list";
 import Footer from "@/components/footer";
 import RepoHeaderBar from "@/components/repo-header-bar";
-import { TextEffect } from "@/components/ui/text-effect";
 import { Button } from "@/components/ui/button";
+import { TextEffect } from "@/components/ui/text-effect";
 import { db, type Message } from "@/lib/db";
 import { models } from "@/lib/models";
 import { getStoredModel } from "@/lib/utils";
 import { streamChatUniversal } from "@/lib/universal-client";
+import { useI18n } from "@/lib/i18n";
 
 export default function Home() {
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
@@ -23,6 +24,7 @@ export default function Home() {
   const [showToBottom, setShowToBottom] = useState(false);
   const chatListRef = useRef<HTMLDivElement>(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     const handlePopState = () => {
@@ -123,7 +125,7 @@ export default function Home() {
 
     try {
       const storedModel = getStoredModel("CF_AI_MODEL");
-      let customConfig: any = undefined;
+      let customConfig: any ;
 
       if (storedModel.provider === "custom") {
         try {
@@ -177,32 +179,37 @@ export default function Home() {
       setStatus("ready");
     } catch (err: any) {
       setStatus("error");
-      toast.error(err.message || "Failed to generate response. Check your API settings.");
+      toast.error(err.message || "生成回复失败，请检查模型与网络配置");
     }
   };
 
   const handleInsertCodeContext = (filename: string, content: string) => {
     onSendMessage({
-      text: `Loaded repository file: ${filename}\n\`\`\`\n${content}\n\`\`\`\nPlease examine this file and help me develop or refactor it.`,
+      text: `已载入仓库文件：${filename}\n\`\`\`\n${content}\n\`\`\`\n请仔细审查该代码，并协助我进行优化、重构或功能实现。`,
     });
   };
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen bg-background">
       <RepoHeaderBar onInsertCodeContext={handleInsertCodeContext} />
 
       {messages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center flex-1">
-          <div className="flex flex-col justify-center h-full w-full space-y-4 px-4">
-            <div className="font-bold text-2xl mx-auto font-mono">
-              <TextEffect per="word" preset="fade-in-blur">
-                How can I assist you today?
-              </TextEffect>
+        <div className="flex flex-col items-center justify-center flex-1 px-4">
+          <div className="flex flex-col justify-center h-full w-full max-w-2xl space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground font-sans">
+                <TextEffect per="word" preset="fade-in-blur">
+                  {t("welcome")}
+                </TextEffect>
+              </h1>
+              <p className="text-xs md:text-sm text-muted-foreground">
+                {t("welcomeSubtitle")}
+              </p>
             </div>
             <ViewTransition name="chat-input">
               <ChatInput
                 models={models.filter((i) => i.type === "Text Generation")}
-                className="mx-auto max-w-3xl"
+                className="w-full"
                 onSendMessage={onSendMessage}
               />
             </ViewTransition>
@@ -212,17 +219,17 @@ export default function Home() {
         <>
           <div
             ref={chatListRef}
-            className="overflow-y-auto scrollbar px-2 flex-1"
+            className="overflow-y-auto scrollbar px-3 md:px-4 flex-1"
             style={{ scrollbarGutter: "stable both-edges" }}
           >
             <ChatList
               status={status}
               messages={messages}
-              className="pt-8 pb-60 max-w-3xl mx-auto"
+              className="pt-6 pb-48 max-w-3xl mx-auto"
             />
           </div>
 
-          <div className="mt-auto pb-1 space-y-1 absolute bottom-0 left-0 right-0 bg-linear-to-t from-background to-transparent px-2">
+          <div className="mt-auto pb-2 space-y-1 absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background/95 to-transparent px-3 md:px-4">
             {showToBottom && (
               <ViewTransition>
                 <Button

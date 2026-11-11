@@ -29,7 +29,7 @@ export default function LoginDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password.trim()) {
-      toast.error("Please enter password");
+      toast.error("请输入管理员密码");
       return;
     }
 
@@ -38,16 +38,25 @@ export default function LoginDialog({
       const expectedPassword = process.env.NEXT_PUBLIC_APP_PASSWORD;
       const storedSavedPassword = localStorage.getItem("CF_AI_PASSWORD");
 
-      // Verify against configured env or stored admin password
-      if (!expectedPassword || password === expectedPassword || password === storedSavedPassword || !storedSavedPassword) {
+      let isValid = false;
+      if (expectedPassword) {
+        isValid = password === expectedPassword;
+      } else if (storedSavedPassword) {
+        isValid = password === storedSavedPassword;
+      } else {
+        // 首次未设定任何环境变量或密码时，将当前输入的密码设为管理凭证
         localStorage.setItem("CF_AI_PASSWORD", password);
+        isValid = true;
+      }
+
+      if (isValid) {
         localStorage.setItem("CF_AI_IS_ADMIN", "true");
         window.dispatchEvent(new Event("auth-changed"));
-        toast.success("Login successful! Administrator access granted.");
+        toast.success("登录成功，已解锁管理员权限");
         onLoginSuccess?.();
         onOpenChange(false);
       } else {
-        toast.error("Incorrect admin password.");
+        toast.error("管理员密码不正确，请重新输入");
       }
     } finally {
       setLoading(false);
@@ -60,10 +69,10 @@ export default function LoginDialog({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <Lock className="size-5 text-primary" />
-            <DialogTitle>Admin Login</DialogTitle>
+            <DialogTitle>管理员登录</DialogTitle>
           </div>
           <DialogDescription>
-            Enter the admin password configured in environment variable <code>APP_PASSWORD</code> to manage custom APIs and unlock full privileges.
+            请输入系统设定的 <code>APP_PASSWORD</code> 管理员密码以管理自定义 API 与核心配置。
           </DialogDescription>
         </DialogHeader>
 
@@ -71,19 +80,19 @@ export default function LoginDialog({
           <div className="space-y-2">
             <Input
               type="password"
-              placeholder="Enter admin password..."
+              placeholder="请输入管理员密码..."
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              取消
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Authenticating..." : "Login"}
+              {loading ? "验证中..." : "确认登录"}
             </Button>
           </DialogFooter>
         </form>

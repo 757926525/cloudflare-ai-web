@@ -3,13 +3,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { ChatStatus, FileUIPart } from "ai";
 import {
-  ArrowUp,
   Earth,
   Loader2,
   Mic,
   MicOff,
   Paperclip,
-  RefreshCw,
+  SendHorizontal,
   Square,
   X,
 } from "lucide-react";
@@ -107,40 +106,43 @@ const ChatInput = ({
         onStop?.();
         break;
       case "error":
-        onRetry?.();
+        // 用户要求直接发送，重试也直接触发发送
+        onRetry ? onRetry() : form.handleSubmit(onSubmit)();
+        break;
+      case "ready":
+        form.handleSubmit(onSubmit)();
         break;
     }
   };
 
   const onAddFiles = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*,.zip";
-    input.multiple = true;
-    input.onchange = async () => {
-      const fileList = Array.from(input.files ?? []);
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*,.zip";
+    fileInput.multiple = true;
+    fileInput.onchange = async () => {
+      const fileList = Array.from(fileInput.files ?? []);
       const imageFiles: File[] = [];
 
       for (const file of fileList) {
         if (file.name.endsWith(".zip")) {
-          // Process zip file
-          toast.info(`Extracting zip: ${file.name}...`);
+          toast.info(`正在解压: ${file.name}...`);
           try {
             const extracted = await extractZipFiles(file);
-            toast.success(`Extracted ${extracted.length} code files from ${file.name}`);
+            toast.success(`成功从 ${file.name} 提取 ${extracted.length} 个代码文件`);
             const codeSummary = extracted
-              .map((f) => `### File: ${f.filename}\n\`\`\`\n${f.content}\n\`\`\``)
+              .map((f) => `### 文件: ${f.filename}\n\`\`\`\n${f.content}\n\`\`\``)
               .join("\n\n");
 
             const currentVal = form.getValues("input");
             form.setValue(
               "input",
               (currentVal ? currentVal + "\n\n" : "") +
-                `Here are the project files extracted from ${file.name}:\n\n` +
+                `以下是从项目压缩包 ${file.name} 中提取的代码文件内容：\n\n` +
                 codeSummary
             );
           } catch (err: any) {
-            toast.error(`Failed to extract zip: ${err.message}`);
+            toast.error(`解压压缩包失败: ${err.message}`);
           }
         } else if (file.type.startsWith("image/")) {
           imageFiles.push(file);
@@ -160,14 +162,14 @@ const ChatInput = ({
         setFiles((prevState) => {
           const combinedFiles = [...prevState, ...newFiles];
           if (combinedFiles.length > 5) {
-            toast.warning("You can only attach up to 5 images.");
+            toast.warning("最多仅支持上传 5 张图片");
             return combinedFiles.slice(0, 5);
           }
           return combinedFiles;
         });
       }
     };
-    input.click();
+    fileInput.click();
   };
 
   const onPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -195,7 +197,7 @@ const ChatInput = ({
       setFiles((prevState) => {
         const combinedFiles = [...prevState, ...newFiles];
         if (combinedFiles.length > 5) {
-          toast.warning("You can only attach up to 5 images.");
+          toast.warning("最多仅支持上传 5 张图片");
           return combinedFiles.slice(0, 5);
         }
         return combinedFiles;
@@ -205,10 +207,10 @@ const ChatInput = ({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="w-full">
         <div
           className={cn(
-            "w-full border-3 rounded-md focus-within:border-primary transition-all",
+            "w-full border-2 border-border/80 bg-background/95 backdrop-blur-md rounded-2xl shadow-lg focus-within:border-primary/80 transition-all overflow-hidden",
             className,
           )}
         >
@@ -216,12 +218,13 @@ const ChatInput = ({
             control={form.control}
             name="input"
             render={({ field }) => (
-              <FormItem>
+              <FormItem className="space-y-0">
                 <FormControl>
                   <Textarea
                     autoFocus
-                    className="border-0 shadow-none focus-visible:ring-0 resize-none max-h-[50vh] scrollbar rounded-b-none rounded-t"
-                    placeholder="Text here..."
+                    rows={2}
+                    className="border-0 shadow-none focus-visible:ring-0 resize-none min-h-[64px] max-h-[35vh] px-4 py-3 text-sm md:text-base leading-relaxed placeholder:text-muted-foreground/60 scrollbar"
+                    placeholder="输入问题或需求，直接回车发送，支持粘贴图片与上传.zip压缩包..."
                     onKeyDown={(event) => {
                       if (
                         event.key === "Enter" &&
@@ -240,115 +243,139 @@ const ChatInput = ({
             )}
           />
 
-          <ul className="flex px-3 gap-1">
-            {files.map((file, index) => {
-              if (file.mediaType.startsWith("image/")) {
-                return (
-                  <li
-                    key={`file-${file.filename}-${index}`}
-                    className="size-12 overflow-hidden rounded-md relative group hover:shadow transition-all"
-                  >
-                    <button
-                      type="button"
-                      className="absolute group-hover:opacity-100 transition-opacity opacity-0
-                     top-0 right-0 bg-black rounded-full cursor-pointer z-10"
-                      onClick={() => {
-                        setFiles((prevState) =>
-                          prevState.filter((_, i) => i !== index),
-                        );
-                      }}
+          {/* 附加图片预览列表 */}
+          {files.length > 0 && (
+            <ul className="flex px-3 pb-2 gap-2 overflow-x-auto">
+              {files.map((file, index) => {
+                if (file.mediaType.startsWith("image/")) {
+                  return (
+                    <li
+                      key={`file-${file.filename}-${index}`}
+                      className="size-14 shrink-0 overflow-hidden rounded-lg relative border border-border/60 group"
                     >
-                      <X className="size-4 text-white" />
-                    </button>
-                    {/** biome-ignore lint/performance/noImgElement: <data_url> */}
-                    <img
-                      src={file.url}
-                      alt={file.filename}
-                      className="hover:brightness-75 object-cover size-full"
-                    />
-                  </li>
-                );
-              }
-
-              return null;
-            })}
-          </ul>
-
-          <div className="flex items-center p-2 space-x-1 dark:bg-input/30 rounded-b">
-            <ModelSelect
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              models={models}
-              modalKey={modalKey ?? "CF_AI_MODEL"}
-            />
-
-            {selectedModel?.input?.includes("search") && (
-              <Toggle
-                aria-label="Toggle web search"
-                className="data-[state=on]:border"
-                pressed={searchEnabled}
-                onPressedChange={(pressed) => {
-                  localStorage.setItem(
-                    "CF_AI_SEARCH_ENABLED",
-                    pressed ? "true" : "false",
+                      <button
+                        type="button"
+                        className="absolute top-1 right-1 bg-black/70 hover:bg-black rounded-full p-0.5 text-white cursor-pointer z-10 transition-colors"
+                        onClick={() => {
+                          setFiles((prevState) =>
+                            prevState.filter((_, i) => i !== index),
+                          );
+                        }}
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                      {/** biome-ignore lint/performance/noImgElement: <data_url> */}
+                      <img
+                        src={file.url}
+                        alt={file.filename}
+                        className="object-cover size-full"
+                      />
+                    </li>
                   );
-                  setSearchEnabled(pressed);
+                }
+                return null;
+              })}
+            </ul>
+          )}
+
+          {/* 底部操作工具栏 */}
+          <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-t border-border/40 gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <ModelSelect
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                models={models}
+                modalKey={modalKey ?? "CF_AI_MODEL"}
+              />
+
+              {selectedModel?.input?.includes("search") && (
+                <Toggle
+                  aria-label="联网搜索"
+                  size="sm"
+                  className="h-8 gap-1 text-xs data-[state=on]:bg-primary/10 data-[state=on]:text-primary"
+                  pressed={searchEnabled}
+                  onPressedChange={(pressed) => {
+                    localStorage.setItem(
+                      "CF_AI_SEARCH_ENABLED",
+                      pressed ? "true" : "false",
+                    );
+                    setSearchEnabled(pressed);
+                  }}
+                >
+                  <Earth className="size-3.5" />
+                  <span className="hidden sm:inline">联网</span>
+                </Toggle>
+              )}
+
+              {/* 上传图片 & Zip */}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                title="上传图片或代码压缩包 (.zip)"
+                type="button"
+                onClick={onAddFiles}
+              >
+                <Paperclip className="size-4" />
+              </Button>
+
+              {/* 语音输入按钮 */}
+              <Button
+                size="sm"
+                variant={isListening ? "destructive" : "ghost"}
+                className={`h-8 w-8 p-0 text-muted-foreground hover:text-foreground ${
+                  isListening ? "animate-pulse text-white" : ""
+                }`}
+                title={isListening ? "停止语音输入" : "麦克风语音输入"}
+                type="button"
+                onClick={() => {
+                  if (isListening) {
+                    stopListening();
+                  } else {
+                    startListening((finalText) => {
+                      form.setValue("input", finalText);
+                    });
+                  }
                 }}
               >
-                <Earth />
-                Search
-              </Toggle>
-            )}
+                {isListening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+              </Button>
+            </div>
 
-            {/* File Upload (Images & Zip) */}
-            <Button
-              size="icon"
-              variant="ghost"
-              className="relative"
-              title="Upload Images or .zip Archive"
-              type="button"
-              onClick={onAddFiles}
-            >
-              <Paperclip className="size-4" />
-            </Button>
-
-            {/* Voice Input Button */}
-            <Button
-              size="icon"
-              variant={isListening ? "destructive" : "ghost"}
-              className={`relative ${isListening ? "animate-pulse" : ""}`}
-              title={isListening ? "Stop Voice Input" : "Start Voice Input"}
-              type="button"
-              onClick={() => {
-                if (isListening) {
-                  stopListening();
-                } else {
-                  startListening((finalText) => {
-                    form.setValue("input", finalText);
-                  });
-                }
-              }}
-            >
-              {isListening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-            </Button>
-
-            <Button
-              size="icon"
-              className="ml-auto"
-              disabled={
-                status === "submitted" ||
-                (input.trim().length === 0 && status === "ready")
-              }
-              type={status === "ready" ? "submit" : "button"}
-              onClick={onSendClick}
-            >
-              {status === "ready" && <ArrowUp />}
-              {status === "submitted" && <Loader2 className="animate-spin" />}
-              {status === "streaming" && (
-                <Square className="fill-primary-foreground" />
+            {/* 明确的【发送】按钮 */}
+            <div className="flex items-center ml-auto">
+              {status === "streaming" ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 px-3 text-xs font-medium rounded-lg gap-1.5 shadow-sm"
+                  type="button"
+                  onClick={onStop}
+                >
+                  <Square className="size-3.5 fill-current" />
+                  <span>停止</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-8 px-3.5 text-xs font-semibold rounded-lg gap-1.5 shadow-md bg-primary hover:bg-primary/90 text-primary-foreground transition-all"
+                  disabled={
+                    status === "submitted" ||
+                    (input.trim().length === 0 && status === "ready")
+                  }
+                  type="submit"
+                  onClick={onSendClick}
+                >
+                  {status === "submitted" ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <SendHorizontal className="size-3.5" />
+                  )}
+                  <span>发送</span>
+                </Button>
               )}
-              {status === "error" && <RefreshCw />}
-            </Button>
+            </div>
           </div>
         </div>
       </form>
