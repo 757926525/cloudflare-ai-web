@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GitBranch, GitFork, RefreshCw, Upload, Check, FolderGit2, FileText, Unlink } from "lucide-react";
+import {
+  GitBranch,
+  GitFork,
+  RefreshCw,
+  Upload,
+  Check,
+  FolderGit2,
+  FileText,
+  Unlink,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +34,13 @@ export interface ActiveRepo {
   branch: string;
   updatedAt?: string;
 }
+
+// 快速跳转至各仓库网站申请授权 Token 的地址
+const AUTH_URLS: Record<GitPlatform, string> = {
+  github: "https://github.com/settings/tokens/new?description=CloudflareAIWeb&scopes=repo",
+  gitee: "https://gitee.com/profile/personal_access_tokens/new",
+  gitlab: "https://gitlab.com/-/user_settings/personal_access_tokens",
+};
 
 export default function RepoHeaderBar({
   onInsertCodeContext,
@@ -60,7 +77,8 @@ export default function RepoHeaderBar({
       const storedRepo = localStorage.getItem("ACTIVE_REPO");
       if (storedRepo) {
         try {
-          setActiveRepo(JSON.parse(storedRepo));
+          const parsed = JSON.parse(storedRepo);
+          setActiveRepo(parsed);
         } catch {
           // ignore
         }
@@ -79,15 +97,15 @@ export default function RepoHeaderBar({
     }
     setLoading(true);
     try {
-      let endpoint = "https://api.github.com/user/repos?sort=updated&per_page=30";
+      let endpoint = "https://api.github.com/user/repos?sort=updated&per_page=50";
       let headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
 
       if (platform === "github") {
         headers["Authorization"] = `token ${token}`;
       } else if (platform === "gitee") {
-        endpoint = `https://gitee.com/api/v5/user/repos?access_token=${token}&sort=updated&per_page=30`;
+        endpoint = `https://gitee.com/api/v5/user/repos?access_token=${token}&sort=updated&per_page=50`;
       } else if (platform === "gitlab") {
-        endpoint = "https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=30";
+        endpoint = "https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=50";
         headers["PRIVATE-TOKEN"] = token;
       }
 
@@ -120,9 +138,9 @@ export default function RepoHeaderBar({
     setActiveRepo(newRepo);
     localStorage.setItem("ACTIVE_REPO", JSON.stringify(newRepo));
     localStorage.setItem("ACTIVE_REPO_PLATFORM", platform);
-    toast.success(`已连接仓库: [${platform.toUpperCase()}] ${newRepo.owner}/${newRepo.name}`);
+    toast.success(`已保存并连接仓库: [${platform.toUpperCase()}] ${newRepo.owner}/${newRepo.name}`);
 
-    // 拉取分支
+    // 拉取分支列表
     try {
       let bUrl = `https://api.github.com/repos/${newRepo.owner}/${newRepo.name}/branches`;
       let bHeaders: Record<string, string> = { Authorization: `token ${token}` };
@@ -187,7 +205,7 @@ export default function RepoHeaderBar({
   const handleDisconnect = () => {
     setActiveRepo(null);
     localStorage.removeItem("ACTIVE_REPO");
-    toast.info("已断开仓库连接");
+    toast.info("已断开仓库连接并清除保存状态");
   };
 
   const handleReadFile = async (path: string) => {
@@ -292,26 +310,35 @@ export default function RepoHeaderBar({
 
   return (
     <>
-      <div className="w-full bg-muted/30 border-b border-border/40 px-3 py-1.5 flex items-center justify-between text-xs backdrop-blur-md">
+      {/* 顶部主横幅：醒目展示已连接仓库与当前分支 */}
+      <div className="w-full bg-muted/40 border-b border-border/50 px-3 py-1.5 flex items-center justify-between text-xs backdrop-blur-md">
         <div className="flex items-center gap-2 overflow-hidden">
           <FolderGit2 className="size-4 shrink-0 text-primary" />
           {activeRepo ? (
-            <div className="flex items-center gap-1.5 truncate">
-              <span className="font-semibold text-foreground truncate">
-                [{activeRepo.platform.toUpperCase()}] {activeRepo.owner}/{activeRepo.name}
+            <div className="flex items-center gap-2 truncate">
+              <span className="font-semibold text-foreground truncate flex items-center gap-1">
+                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm font-mono uppercase">
+                  {activeRepo.platform}
+                </span>
+                {activeRepo.owner}/{activeRepo.name}
               </span>
-              <Badge variant="secondary" className="text-[10px] flex items-center gap-1 font-mono h-4 px-1.5">
+
+              {/* 醒目的仓库分支标识 */}
+              <Badge variant="outline" className="text-[10px] flex items-center gap-1 font-mono h-4.5 px-2 bg-background border-primary/40 text-primary">
                 <GitBranch className="size-3" />
-                {activeRepo.branch}
+                分支: {activeRepo.branch}
               </Badge>
+
               {activeRepo.updatedAt && (
                 <span className="text-[10px] text-muted-foreground hidden md:inline">
-                  (同步于 {activeRepo.updatedAt})
+                  (已保存连接 · 同步于 {activeRepo.updatedAt})
                 </span>
               )}
             </div>
           ) : (
-            <span className="text-muted-foreground truncate">未连接代码仓库 (支持 GitHub / Gitee / GitLab)</span>
+            <span className="text-muted-foreground truncate flex items-center gap-1">
+              未连接代码仓库 (支持连接 GitHub / Gitee / GitLab 自由选择仓库对话)
+            </span>
           )}
         </div>
 
@@ -326,7 +353,7 @@ export default function RepoHeaderBar({
             }}
           >
             <GitFork className="size-3.5" />
-            {activeRepo ? "切换仓库" : "连接仓库"}
+            {activeRepo ? "选择不同仓库" : "连接仓库"}
           </Button>
 
           {activeRepo && (
@@ -365,7 +392,7 @@ export default function RepoHeaderBar({
               连接代码仓库 (GitHub / Gitee / GitLab)
             </DialogTitle>
             <DialogDescription>
-              选择平台、浏览源文件载入 AI 对话，或在线推送代码提交。
+              选择平台、授权连接后自由选择仓库进行对话，随时切换分支与载入代码。
             </DialogDescription>
           </DialogHeader>
 
@@ -397,14 +424,27 @@ export default function RepoHeaderBar({
 
           <div className="space-y-4 mt-2">
             {!token ? (
-              <div className="p-4 border rounded-xl bg-muted/20 text-center space-y-3">
+              <div className="p-4 border rounded-xl bg-muted/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold">请求 {platform.toUpperCase()} 授权</span>
+                  <a
+                    href={AUTH_URLS[platform]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                  >
+                    跳转到 {platform.toUpperCase()} 请求授权令牌
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  尚未配置 {platform.toUpperCase()} 访问令牌。请输入 Personal Access Token：
+                  点击上方链接前往官方生成带有 <code>repo</code> 权限的 Personal Access Token，复制并粘贴在下方：
                 </p>
-                <div className="flex gap-2 max-w-sm mx-auto">
+                <div className="flex gap-2">
                   <Input
                     type="password"
-                    placeholder={`输入 ${platform.toUpperCase()} 访问令牌`}
+                    placeholder={`粘贴 ${platform.toUpperCase()} 访问令牌`}
+                    value={token}
                     onChange={(e) => setToken(e.target.value)}
                   />
                   <Button
@@ -430,16 +470,26 @@ export default function RepoHeaderBar({
             ) : (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">已载入 {platform.toUpperCase()} 认证</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">已载入 {platform.toUpperCase()} 授权凭据</span>
+                    <a
+                      href={AUTH_URLS[platform]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-primary hover:underline flex items-center gap-0.5"
+                    >
+                      重新授权 <ExternalLink className="size-2.5" />
+                    </a>
+                  </div>
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={fetchRepos} disabled={loading}>
-                    <RefreshCw className={`size-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> 刷新列表
+                    <RefreshCw className={`size-3.5 mr-1 ${loading ? "animate-spin" : ""}`} /> 刷新仓库列表
                   </Button>
                 </div>
 
                 <div className="border rounded-xl max-h-48 overflow-y-auto p-1.5 space-y-1">
                   {repos.length === 0 ? (
                     <div className="p-4 text-center text-xs text-muted-foreground">
-                      {loading ? "正在加载代码仓库..." : "点击「刷新列表」加载您的项目"}
+                      {loading ? "正在加载代码仓库..." : "点击「刷新仓库列表」加载您的项目"}
                     </div>
                   ) : (
                     repos.map((repo) => (
@@ -447,7 +497,7 @@ export default function RepoHeaderBar({
                         key={repo.id}
                         onClick={() => selectRepo(repo)}
                         className={`p-2 rounded-lg cursor-pointer text-xs flex items-center justify-between hover:bg-accent transition-colors ${
-                          activeRepo?.name === repo.name ? "bg-accent font-semibold" : ""
+                          activeRepo?.name === repo.name ? "bg-accent font-semibold border-l-2 border-primary" : ""
                         }`}
                       >
                         <span className="truncate">{repo.full_name || repo.path_with_namespace || repo.name}</span>
@@ -460,7 +510,7 @@ export default function RepoHeaderBar({
                 {activeRepo && (
                   <div className="space-y-3 border-t pt-3">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs font-semibold">当前分支</Label>
+                      <Label className="text-xs font-semibold">当前分支切换</Label>
                       <select
                         className="text-xs border rounded-lg px-2 py-1 bg-background"
                         value={activeRepo.branch}

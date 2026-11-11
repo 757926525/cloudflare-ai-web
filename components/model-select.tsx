@@ -33,9 +33,9 @@ const getGroupedModels = (models: Model[]) => {
   const groups: { heading: string; models: Model[] }[] = [
     { heading: "Cloudflare Workers AI (首选推荐)", models: [] },
     { heading: "OpenAI 官方原生接口", models: [] },
-    { heading: "Groq 极速推理平台 (免费配额)", models: [] },
+    { heading: "Groq 极速推理平台", models: [] },
     { heading: "DeepSeek 官方 API", models: [] },
-    { heading: "Google Gemini (提供免费额度)", models: [] },
+    { heading: "Google Gemini", models: [] },
     { heading: "本地离线模型 (Ollama 完全免费)", models: [] },
     { heading: "自定义 API 模型", models: [] },
   ];
@@ -67,7 +67,9 @@ export type ConnectionStatus = "online" | "checking" | "offline" | "needs-key";
 const statusCache: Record<string, { status: ConnectionStatus; timestamp: number; pingMs?: number }> = {};
 
 /**
- * 针对各大模型服务商进行真实的轻量探活测试（真连接状态灯）
+ * 真实有效的网络探活测试：
+ * 绝不允许无连接/未配置时虚假亮绿灯！
+ * 严格检测：无 Key 时标黄 (needs-key)，连接超时或报错标红 (offline)，只有真实 HTTP 请求成功才标绿 (online)。
  */
 export async function probeModelStatus(model: Model): Promise<{ status: ConnectionStatus; pingMs?: number }> {
   const now = Date.now();
@@ -80,24 +82,64 @@ export async function probeModelStatus(model: Model): Promise<{ status: Connecti
 
   try {
     if (model.provider === "workers-ai") {
-      // 探活后端 /api/chat 或 Cloudflare Pages Functions
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch("/api/chat", {
-        method: "HEAD",
-        signal: controller.signal,
-      }).catch(() => null);
-      clearTimeout(timeout);
+      const cfAccount = localStorage.getItem("CF_ACCOUNT_ID");
+      const cfToken = localStorage.getItem("CF_WORKERS_AI_TOKEN");
 
-      const pingMs = Math.round(performance.now() - start);
-      const status: ConnectionStatus = res && (res.status === 200 || res.status === 405) ? "online" : "online";
-      statusCache[model.id] = { status, timestamp: now, pingMs };
-      return { status, pingMs };
+      // 如果客户端未配置 token，则测试服务端 Pages Functions 是否提供 env.AI 绑定或 env 凭据
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(cfAccount ? { "X-CF-Account": cfAccount } : {}),
+            ...(cfToken ? { "X-CF-Token": cfToken } : {}),
+          },
+          body: JSON.stringify({
+            model: model.id,
+            messages: [{ role: "user", content: "ping" }],
+            provider: "workers-ai",
+            probeOnly: true,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        const pingMs = Math.round(performance.now() - start);
+        // 若服务端返回 400 缺少凭据，且本地无 token，说明未连接，显示未配置(黄灯)
+        if (res.status === 400 && !cfToken) {
+          const status: ConnectionStatus = "needs-key";
+          statusCache[model.id] = { status, timestamp: now };
+          return { status };
+        }
+
+        if (res.ok || res.status === 200 || res.status === 405) {
+          const status: ConnectionStatus = "online";
+          statusCache[model.id] = { status, timestamp: now, pingMs };
+          return { status, pingMs };
+        } else {
+          const status: ConnectionStatus = !cfToken ? "needs-key" : "offline";
+          statusCache[model.id] = { status, timestamp: now };
+          return { status };
+        }
+      } catch {
+        // 请求本地或边缘 API 失败
+        if (!cfToken && !cfAccount) {
+          const status: ConnectionStatus = "needs-key";
+          statusCache[model.id] = { status, timestamp: now };
+          return { status };
+        }
+        const status: ConnectionStatus = "offline";
+        statusCache[model.id] = { status, timestamp: now };
+        return { status };
+      }
     }
 
     if (model.provider === "openai") {
       const apiKey = localStorage.getItem("OPENAI_API_KEY");
-      if (!apiKey) {
+      if (!apiKey || !apiKey.startsWith("sk-")) {
         statusCache[model.id] = { status: "needs-key", timestamp: now };
         return { status: "needs-key" };
       }
@@ -119,7 +161,7 @@ export async function probeModelStatus(model: Model): Promise<{ status: Connecti
 
     if (model.provider === "deepseek") {
       const apiKey = localStorage.getItem("DEEPSEEK_API_KEY");
-      if (!apiKey) {
+      if (!apiKey || !apiKey.startsWith("sk-")) {
         statusCache[model.id] = { status: "needs-key", timestamp: now };
         return { status: "needs-key" };
       }
@@ -140,10 +182,9 @@ export async function probeModelStatus(model: Model): Promise<{ status: Connecti
 
     if (model.provider === "groq") {
       const apiKey = localStorage.getItem("GROQ_API_KEY");
-      if (!apiKey) {
-        // Groq 提供免费公共配额或需配 key
-        statusCache[model.id] = { status: "online", timestamp: now, pingMs: 120 };
-        return { status: "online", pingMs: 120 };
+      if (!apiKey || !apiKey.startsWith("gsk_")) {
+        statusCache[model.id] = { status: "needs-key", timestamp: now };
+        return { status: "needs-key" };
       }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 4000);
@@ -181,7 +222,7 @@ export async function probeModelStatus(model: Model): Promise<{ status: Connecti
     }
 
     if (model.provider === "ollama") {
-      const baseUrl = localStorage.getItem("OLLAMA_BASE_URL") || "http://localhost:11434";
+      const baseUrl = localStorage.getItem("OLLAMA_BASE_URL") || "http://127.0.0.1:11434";
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000);
       const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/tags`, {
@@ -198,6 +239,7 @@ export async function probeModelStatus(model: Model): Promise<{ status: Connecti
 
     if (model.provider === "custom") {
       if (!model.baseUrl) {
+        statusCache[model.id] = { status: "offline", timestamp: now };
         return { status: "offline" };
       }
       const controller = new AbortController();
@@ -210,12 +252,12 @@ export async function probeModelStatus(model: Model): Promise<{ status: Connecti
       clearTimeout(timeout);
 
       const pingMs = Math.round(performance.now() - start);
-      const status: ConnectionStatus = res && res.ok ? "online" : "online"; // 自定义 endpoint 允许连通
+      const status: ConnectionStatus = res && res.ok ? "online" : res?.status === 401 ? "needs-key" : "offline";
       statusCache[model.id] = { status, timestamp: now, pingMs };
       return { status, pingMs };
     }
 
-    return { status: "online" };
+    return { status: "needs-key" };
   } catch {
     return { status: "offline" };
   }
@@ -255,7 +297,7 @@ const ModelList = ({
         {grouped.map(({ heading, models: gModels }) => (
           <CommandGroup key={heading} heading={heading} className="text-xs font-semibold text-muted-foreground">
             {gModels.map((model) => {
-              const status = modelStatuses[model.id] || "online";
+              const status = modelStatuses[model.id] || "checking";
 
               return (
                 <CommandItem
@@ -277,16 +319,16 @@ const ModelList = ({
                             ? "bg-amber-400 animate-pulse"
                             : status === "needs-key"
                               ? "bg-amber-500"
-                              : "bg-rose-500"
+                              : "bg-rose-500 shadow-xs shadow-rose-400"
                       }`}
                       title={
                         status === "online"
-                          ? "真实在线就绪"
+                          ? "真实在线且连通成功"
                           : status === "needs-key"
-                            ? "待配置密钥"
+                            ? "未配置密钥或缺少凭证"
                             : status === "checking"
-                              ? "连接测活中..."
-                              : "离线或连接失败"
+                              ? "正在测试真实网络连通..."
+                              : "无法连通 / 离线"
                       }
                     />
 
@@ -370,7 +412,7 @@ function ComboBoxResponsive({
     };
   }, [selectedModel]);
 
-  // 全量/首屏异步探活全部提供商
+  // 全量异步探活当前列表模型
   const handleProbeAll = () => {
     for (const m of allModels) {
       probeModelStatus(m).then(({ status }) => {
@@ -378,6 +420,10 @@ function ComboBoxResponsive({
       });
     }
   };
+
+  useEffect(() => {
+    handleProbeAll();
+  }, [allModels]);
 
   useEffect(() => {
     const updateModels = () => {
@@ -420,9 +466,9 @@ function ComboBoxResponsive({
     }
   }, [selectedModel, modalKey]);
 
-  const currentStatus = (selectedModel && modelStatuses[selectedModel.id]) || "online";
+  const currentStatus = (selectedModel && modelStatuses[selectedModel.id]) || "checking";
 
-  // 动态真连接状态指示灯
+  // 动态真连接状态指示灯：严谨展示真实网络状态，绝不默认通通绿灯
   const statusLight = (
     <span
       className={`size-2 rounded-full shrink-0 ${
@@ -431,17 +477,17 @@ function ComboBoxResponsive({
           : currentStatus === "checking"
             ? "bg-amber-400 animate-pulse"
             : currentStatus === "needs-key"
-              ? "bg-amber-500 animate-pulse"
+              ? "bg-amber-500"
               : "bg-rose-500"
       }`}
       title={
         currentStatus === "online"
           ? `真连接在线${currentPing ? ` (${currentPing}ms)` : ""}`
           : currentStatus === "needs-key"
-            ? "需要配置 API Key"
+            ? "待配置密钥 (未连接)"
             : currentStatus === "checking"
               ? "测活中..."
-              : "离线/连接失败"
+              : "网络不通或离线"
       }
     />
   );
@@ -507,7 +553,7 @@ function ComboBoxResponsive({
         )}
       </DrawerTrigger>
       <DrawerContent className="p-4 pb-8 max-h-[85vh]">
-        <DrawerTitle className="text-base font-semibold mb-2">选择 AI 模型 (标明免费/收费与真连接状态)</DrawerTitle>
+        <DrawerTitle className="text-base font-semibold mb-2">选择 AI 模型 (真连接状态灯)</DrawerTitle>
         <div className="mt-2">
           <ModelList
             setOpen={setOpen}
