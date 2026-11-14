@@ -44,7 +44,7 @@ export async function onRequestPost({ request, env }: PagesContext) {
     ]);
 
     let languageModel;
-    const tools: Record<string, unknown> = {};
+    const tools = {};
 
     if (provider === "google") {
       if (!env.GOOGLE_API_KEY) {
