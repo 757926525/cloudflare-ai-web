@@ -17,7 +17,7 @@ const ChatList = memo(
     className?: string;
   }) => {
     return (
-      <ul className={cn("flex flex-col w-full space-y-1", className)}>
+      <ul className={cn("flex flex-col w-full space-y-4", className)}>
         {messages.map((message, index) => {
           const isLastMessage = index === messages.length - 1;
 
@@ -27,7 +27,11 @@ const ChatList = memo(
                 key={message.id}
                 className="self-end max-w-[90%] ani-slide-top"
               >
-                <UserChatItem parts={message.parts} />
+                <UserChatItem
+                  messageId={message.id}
+                  createdAt={message.createdAt}
+                  parts={message.parts}
+                />
               </li>
             );
           }
@@ -36,6 +40,8 @@ const ChatList = memo(
             return (
               <li key={message.id} className="ani-slide-top">
                 <AssistantChatItem
+                  messageId={message.id}
+                  createdAt={message.createdAt}
                   parts={message.parts}
                   status={status}
                   isLastMessage={isLastMessage}
@@ -49,7 +55,7 @@ const ChatList = memo(
 
         {status === "submitted" && (
           <li className="w-fit ani-slide-top">
-            <TextShimmer duration={1}>Generating...</TextShimmer>
+            <TextShimmer duration={1}>正在思考并生成回复...</TextShimmer>
           </li>
         )}
       </ul>

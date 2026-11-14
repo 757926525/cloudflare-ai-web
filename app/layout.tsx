@@ -8,37 +8,40 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { I18nProvider } from "@/lib/i18n";
+import { ThemeCustomProvider } from "@/lib/theme-custom";
 
 export const metadata: Metadata = {
   title: "Cloudflare AI Web",
   description: "Cloudflare AI Platform with one-click deployment.",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // const cookieStore = await cookies();
-  // const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
-
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="zh" suppressHydrationWarning>
       <body className="scrollbar-thumb-border scrollbar-track-transparent">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <Toaster position="top-center" richColors />
+          <I18nProvider>
+            <ThemeCustomProvider>
+              <Toaster position="top-center" richColors />
 
-          <SidebarProvider>
-            <AppSidebar />
+              <SidebarProvider>
+                <AppSidebar />
 
-            <SidebarInset>
-              <header className="h-16 flex items-center px-4 absolute">
-                <SidebarTrigger className="-ml-1 z-10" />
-              </header>
+                <SidebarInset>
+                  <header className="h-14 flex items-center px-4 absolute w-full justify-between z-20 pointer-events-none">
+                    <SidebarTrigger className="-ml-1 pointer-events-auto" />
+                  </header>
 
-              {children}
-            </SidebarInset>
-          </SidebarProvider>
+                  {children}
+                </SidebarInset>
+              </SidebarProvider>
+            </ThemeCustomProvider>
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

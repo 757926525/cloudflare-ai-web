@@ -1,12 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  typedRoutes: true,
-  reactCompiler: true,
-  experimental: {
-    typedEnv: true,
+  output: "export",
+  images: {
+    unoptimized: true,
   },
+  reactCompiler: true,
 };
 
 export default nextConfig;
