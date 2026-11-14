@@ -1,3 +1,5 @@
+import type { ToolSet } from "ai";
+
 interface PagesEnv {
   CF_ACCOUNT_ID?: string;
   CF_WORKERS_AI_TOKEN?: string;
@@ -44,7 +46,7 @@ export async function onRequestPost({ request, env }: PagesContext) {
     ]);
 
     let languageModel;
-    const tools = {};
+    const tools: ToolSet = {};
 
     if (provider === "google") {
       if (!env.GOOGLE_API_KEY) {
