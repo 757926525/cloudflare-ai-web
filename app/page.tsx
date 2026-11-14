@@ -15,7 +15,6 @@ export default function Home() {
   const onSendMessage = useCallback(
     async (data: onSendMessageProps) => {
       const { text, files } = data;
-
       const sessionId = crypto.randomUUID();
       await db.session.add({
         updatedAt: new Date(),
@@ -24,19 +23,13 @@ export default function Home() {
       });
       await db.message.add({
         id: generateId(),
-        parts: [
-          ...(files ?? []),
-          {
-            type: "text",
-            text,
-          },
-        ],
+        parts: [...(files ?? []), { type: "text", text }],
         role: "user",
         sessionId,
         createdAt: new Date(),
       });
 
-      router.replace(`/c/${sessionId}?new`);
+      router.replace(`/c?session_id=${encodeURIComponent(sessionId)}&new`);
     },
     [router],
   );
@@ -57,7 +50,6 @@ export default function Home() {
           />
         </ViewTransition>
       </div>
-
       <Footer classname="mt-auto mb-1" />
     </div>
   );

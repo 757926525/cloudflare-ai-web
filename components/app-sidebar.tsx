@@ -3,8 +3,8 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { Cog, ImageIcon, MoreHorizontal, Plus } from "lucide-react";
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import LoadingIndicator from "@/components/loading-indicator";
 import {
   AlertDialog,
@@ -44,40 +44,44 @@ interface GroupedSessions {
 }
 
 const AppSidebar = () => {
-  const { session_id } = useParams();
   const router = useRouter();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [sessionId, setSessionId] = useState("");
+  const [activeSessionId, setActiveSessionId] = useState("");
   const pathname = usePathname();
 
   const sessions = useLiveQuery(() =>
     db.session.limit(100).reverse().sortBy("updatedAt"),
   );
 
+  useEffect(() => {
+    const updateSessionId = () => {
+      setActiveSessionId(
+        new URLSearchParams(window.location.search).get("session_id") ?? "",
+      );
+    };
+    updateSessionId();
+    window.addEventListener("popstate", updateSessionId);
+    return () => window.removeEventListener("popstate", updateSessionId);
+  }, [pathname]);
+
   const groupedSessions =
     sessions?.reduce((groups, session) => {
-      const now = new Date();
-      const updatedAt = new Date(session.updatedAt);
-      const diffTime = now.getTime() - updatedAt.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-      let groupType: GroupedSessions["type"];
-      if (diffDays === 0) {
-        groupType = "today";
-      } else if (diffDays <= 7) {
-        groupType = "last 7 days";
-      } else if (diffDays <= 30) {
-        groupType = "last 30 days";
-      } else {
-        groupType = "earlier";
-      }
-
-      const group = groups.find((g) => g.type === groupType);
-      if (group) {
-        group.sessions.push(session);
-      } else {
-        groups.push({ type: groupType, sessions: [session] });
-      }
+      const diffDays = Math.floor(
+        (Date.now() - new Date(session.updatedAt).getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
+      const groupType: GroupedSessions["type"] =
+        diffDays === 0
+          ? "today"
+          : diffDays <= 7
+            ? "last 7 days"
+            : diffDays <= 30
+              ? "last 30 days"
+              : "earlier";
+      const group = groups.find((item) => item.type === groupType);
+      if (group) group.sessions.push(session);
+      else groups.push({ type: groupType, sessions: [session] });
       return groups;
     }, [] as GroupedSessions[]) ?? [];
 
@@ -103,21 +107,13 @@ const AppSidebar = () => {
                   <LoadingIndicator className="ml-auto" />
                 </Link>
               </SidebarMenuButton>
-
               {pathname === "/image" && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <SidebarMenuAction>
-                      <MoreHorizontal />
-                    </SidebarMenuAction>
+                    <SidebarMenuAction><MoreHorizontal /></SidebarMenuAction>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="right" align="start">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setDeleteConfirmOpen(true);
-                        setSessionId("image");
-                      }}
-                    >
+                    <DropdownMenuItem onClick={() => { setDeleteConfirmOpen(true); setSessionId("image"); }}>
                       <span className="text-destructive">Delete</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -127,34 +123,25 @@ const AppSidebar = () => {
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent className="scrollbar">
-          {groupedSessions.map(({ type, sessions }) => (
+          {groupedSessions.map(({ type, sessions: grouped }) => (
             <SidebarGroup key={type}>
               <SidebarGroupLabel>{type}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {sessions.map(({ id, name }) => (
+                  {grouped.map(({ id, name }) => (
                     <SidebarMenuItem key={id}>
-                      <SidebarMenuButton asChild isActive={session_id === id}>
-                        <Link href={`/c/${id}`}>
-                          {name}
-                          <LoadingIndicator className="ml-auto" />
+                      <SidebarMenuButton asChild isActive={activeSessionId === id}>
+                        <Link href={`/c?session_id=${encodeURIComponent(id)}`}>
+                          {name}<LoadingIndicator className="ml-auto" />
                         </Link>
                       </SidebarMenuButton>
-
-                      {session_id === id && (
+                      {activeSessionId === id && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <SidebarMenuAction>
-                              <MoreHorizontal />
-                            </SidebarMenuAction>
+                            <SidebarMenuAction><MoreHorizontal /></SidebarMenuAction>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent side="right" align="start">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setDeleteConfirmOpen(true);
-                                setSessionId(id);
-                              }}
-                            >
+                            <DropdownMenuItem onClick={() => { setDeleteConfirmOpen(true); setSessionId(id); }}>
                               <span className="text-destructive">Delete</span>
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -170,30 +157,19 @@ const AppSidebar = () => {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center">
-              <Button size="icon" variant="ghost" className="size-8" disabled>
-                <Cog />
-              </Button>
-
+              <Button size="icon" variant="ghost" className="size-8" disabled><Cog /></Button>
               <Link href="/" className="ml-auto">
-                <Button variant="ghost">
-                  New Chat
-                  <Plus />
-                </Button>
+                <Button variant="ghost">New Chat<Plus /></Button>
               </Link>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
-
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Are you sure you want to delete this session?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogTitle>Are you sure you want to delete this session?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
